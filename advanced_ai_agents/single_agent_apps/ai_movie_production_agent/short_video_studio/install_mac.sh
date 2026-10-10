@@ -63,7 +63,8 @@ fi
 cat > "$LAUNCHER" <<LAUNCH
 #!/bin/bash
 cd "$APP_DIR"
-(sleep 3; open "http://localhost:8000") &
+# Open the browser only once the app is really ready (the first start can be slow).
+(for i in \$(seq 1 90); do curl -s -o /dev/null http://127.0.0.1:8000/ && break; sleep 1; done; open "http://127.0.0.1:8000") &
 ./.venv/bin/python app.py
 LAUNCH
 chmod +x "$LAUNCHER"
@@ -71,5 +72,5 @@ chmod +x "$LAUNCHER"
 say "All done! ✅"
 printf "Next time, just double-click \033[1m'Short Video Studio'\033[0m on your Desktop.\n"
 printf "To stop the app, press Control + C in this window (or close it).\n"
-say "Starting the app now — your browser will open in a few seconds…"
+say "Starting the app now — your browser will open when it is ready (up to a minute the first time)…"
 exec "$LAUNCHER"
