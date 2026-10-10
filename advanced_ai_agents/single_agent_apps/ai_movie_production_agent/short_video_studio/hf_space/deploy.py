@@ -58,4 +58,23 @@ operations += [CommitOperationDelete(path_in_repo=name)
 
 sha = os.getenv("GITHUB_SHA", "local")[:7]
 api.create_commit(repo_id, operations, repo_type="space", commit_message=f"Deploy from GitHub {sha}")
-print(f"Done! Open https://huggingface.co/spaces/{repo_id}")
+print("Files uploaded. Waiting for Hugging Face to build and start the app…")
+
+# Follow the build so problems show up here in GitHub (up to 20 minutes).
+import time  # noqa: E402
+
+last_stage = None
+for _ in range(120):
+    runtime = api.get_space_runtime(repo_id)
+    stage = str(getattr(runtime.stage, "value", runtime.stage))
+    if stage != last_stage:
+        print(f"  Space status: {stage}")
+        last_stage = stage
+    if stage == "RUNNING":
+        print(f"Done! Open https://huggingface.co/spaces/{repo_id}")
+        sys.exit(0)
+    if "ERROR" in stage:
+        print(f"::error::The Space failed to start ({stage}): {(runtime.raw or {}).get('errorMessage', '')}")
+        sys.exit(1)
+    time.sleep(10)
+print(f"::warning::Still building after 20 minutes. Check https://huggingface.co/spaces/{repo_id}")
