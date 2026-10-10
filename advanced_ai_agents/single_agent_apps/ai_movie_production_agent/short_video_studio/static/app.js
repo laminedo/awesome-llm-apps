@@ -23,6 +23,7 @@ const state = {
 let voices = {};
 let script = null;
 let serverHasKey = false;
+let outputMaxAgeHours = 0;
 
 // ---------- small helpers ----------
 
@@ -277,6 +278,8 @@ function showResult(job) {
   const warnings = job.warnings || [];
   $("#warnings").hidden = !warnings.length;
   $("#warnings").innerHTML = warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join("");
+  $("#expiryNote").hidden = !outputMaxAgeHours;
+  $("#expiryNote").textContent = `Download it now: videos are deleted from the server after ${outputMaxAgeHours} hours.`;
   toast(`Your ${job.duration}s video is ready 🎉`);
 }
 
@@ -299,8 +302,9 @@ async function init() {
     const config = await api("/api/config");
     voices = config.voices;
     serverHasKey = config.server_has_key;
+    outputMaxAgeHours = config.output_max_age_hours || 0;
   } catch {
-    toast("Can't reach the server. Is `python app.py` running?", 8000);
+    toast("Can't reach the server. Is the app running?", 8000);
   }
   fillVoices(prefs);
   if (serverHasKey) $("#keyHint").insertAdjacentHTML("afterbegin", "<b>A key is already set in your .env file.</b> ");

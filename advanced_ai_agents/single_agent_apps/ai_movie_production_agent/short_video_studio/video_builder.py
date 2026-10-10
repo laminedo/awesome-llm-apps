@@ -6,6 +6,7 @@ Puts everything together with FFmpeg (installed automatically with the
   all scenes                                           ->  final MP4
 """
 
+import glob
 import os
 import re
 import subprocess
@@ -25,6 +26,8 @@ FONT_CANDIDATES = [
     "/System/Library/Fonts/Helvetica.ttc",
     "C:/Windows/Fonts/seguisb.ttf",
     "C:/Windows/Fonts/arialbd.ttf",
+    *sorted(glob.glob("/usr/share/fonts/**/Inter-Bold.*", recursive=True)),
+    *sorted(glob.glob("/usr/share/fonts/**/Inter*Variable.ttf", recursive=True)),
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",

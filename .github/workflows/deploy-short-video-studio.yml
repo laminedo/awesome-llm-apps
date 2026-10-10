@@ -1,0 +1,32 @@
+name: Deploy Short Video Studio to Hugging Face
+
+on:
+  push:
+    branches: [main, claude/hopeful-bohr-lm8k5a]
+    paths:
+      - "advanced_ai_agents/single_agent_apps/ai_movie_production_agent/short_video_studio/**"
+      - ".github/workflows/deploy-short-video-studio.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-short-video-studio
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    if: github.repository == 'laminedo/awesome-llm-apps'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "huggingface_hub>=0.30"
+      - name: Upload to the private Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+        run: python advanced_ai_agents/single_agent_apps/ai_movie_production_agent/short_video_studio/hf_space/deploy.py

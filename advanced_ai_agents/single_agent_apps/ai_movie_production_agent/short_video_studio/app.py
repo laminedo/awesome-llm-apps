@@ -37,6 +37,8 @@ from voiceover import VOICES, make_voiceover  # noqa: E402
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(HERE, "outputs")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+# On a web server, delete finished videos after this many hours (0 = keep forever).
+OUTPUT_MAX_AGE_HOURS = float(os.getenv("OUTPUT_MAX_AGE_HOURS", "0"))
 
 FORMATS = {
     "vertical": {"size": (1080, 1920), "aspect": "9:16"},  # Reels / Shorts
@@ -177,11 +179,23 @@ def run_job(job_id: str, request: VideoRequest, api_key: str) -> None:
         job.update(status="error", step="Something went wrong", error=str(error))
 
 
+def clean_old_outputs() -> None:
+    if OUTPUT_MAX_AGE_HOURS <= 0:
+        return
+    cutoff = time.time() - OUTPUT_MAX_AGE_HOURS * 3600
+    for job_id in os.listdir(OUTPUT_DIR):
+        path = os.path.join(OUTPUT_DIR, job_id)
+        if os.path.isdir(path) and os.path.getmtime(path) < cutoff:
+            shutil.rmtree(path, ignore_errors=True)
+            JOBS.pop(job_id, None)
+
+
 # ---------- API routes ----------
 
 @app.get("/api/config")
 def config():
-    return {"server_has_key": bool(os.getenv("GOOGLE_API_KEY")), "voices": VOICES}
+    return {"server_has_key": bool(os.getenv("GOOGLE_API_KEY")), "voices": VOICES,
+            "output_max_age_hours": OUTPUT_MAX_AGE_HOURS}
 
 
 @app.post("/api/script")
@@ -199,6 +213,7 @@ def create_video(request: VideoRequest, x_google_api_key: str | None = Header(de
     if request.format not in FORMATS:
         raise HTTPException(400, "Unknown format")
     api_key = resolve_key(x_google_api_key)
+    clean_old_outputs()
     job_id = uuid.uuid4().hex[:12]
     JOBS[job_id] = {"id": job_id, "status": "running", "progress": 0.0, "step": "Starting",
                     "log": [], "warnings": [], "created": time.time()}
