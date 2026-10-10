@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from huggingface_hub import CommitOperationAdd, CommitOperationDelete, HfApi
+from huggingface_hub.errors import HfHubHTTPError
 
 SPACE_NAME = os.getenv("HF_SPACE_NAME", "short-video-studio")
 APP_DIR = Path(__file__).resolve().parent.parent
@@ -26,7 +27,14 @@ username = api.whoami()["name"]
 repo_id = f"{username}/{SPACE_NAME}"
 
 print(f"Deploying to https://huggingface.co/spaces/{repo_id} (private)")
-api.create_repo(repo_id, repo_type="space", space_sdk="docker", private=True, exist_ok=True)
+try:
+    api.create_repo(repo_id, repo_type="space", space_sdk="docker", private=True, exist_ok=True)
+except HfHubHTTPError as error:
+    if error.response is not None and error.response.status_code == 402:
+        print("::error::Hugging Face needs a PRO subscription to host this app "
+              "(https://huggingface.co/pro). Subscribe, then re-run this deploy.")
+        sys.exit(1)
+    raise
 api.update_repo_settings(repo_id, repo_type="space", private=True)  # always keep it private
 
 google_key = os.getenv("GOOGLE_API_KEY", "").strip()
