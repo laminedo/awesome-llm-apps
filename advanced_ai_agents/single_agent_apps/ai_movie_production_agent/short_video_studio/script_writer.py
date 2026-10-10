@@ -10,8 +10,9 @@ short video, using Google Gemini. Every scene has:
 import json
 import os
 
-from google import genai
 from google.genai import types
+
+import google_client
 
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
@@ -81,8 +82,7 @@ Rules:
 - hashtags: 5 to 8 relevant hashtags, each starting with #.
 """
 
-    client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(
+    response = google_client.call(api_key, lambda client: client.models.generate_content(
         model=GEMINI_MODEL,
         contents=prompt,
         config=types.GenerateContentConfig(
@@ -90,7 +90,7 @@ Rules:
             response_schema=SCRIPT_SCHEMA,
             temperature=0.9,
         ),
-    )
+    ))
     script = json.loads(response.text)
     script["hashtags"] = [
         tag if tag.startswith("#") else f"#{tag}" for tag in script.get("hashtags", [])

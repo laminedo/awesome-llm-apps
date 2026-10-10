@@ -6,7 +6,7 @@ set -e
 
 BRANCH="claude/hopeful-bohr-lm8k5a"
 BASE="https://raw.githubusercontent.com/laminedo/awesome-llm-apps/refs/heads/$BRANCH/advanced_ai_agents/single_agent_apps/ai_movie_production_agent/short_video_studio"
-FILES="app.py script_writer.py voiceover.py visuals.py video_builder.py requirements.txt .env.example README.md static/index.html static/style.css static/app.js"
+FILES="app.py google_client.py script_writer.py voiceover.py visuals.py video_builder.py requirements.txt .env.example README.md static/index.html static/style.css static/app.js"
 APP_DIR="$HOME/ShortVideoStudio"
 LAUNCHER="$HOME/Desktop/Short Video Studio.command"
 PYTHON_PKG="https://www.python.org/ftp/python/3.13.1/python-3.13.1-macos11.pkg"

@@ -10,8 +10,9 @@ import os
 import wave
 
 import edge_tts
-from google import genai
 from google.genai import types
+
+import google_client
 
 GEMINI_TTS_MODEL = os.getenv("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
 
@@ -63,8 +64,7 @@ async def _edge_tts(text: str, voice: str, rate: str, out_path: str) -> None:
 
 
 def _gemini_tts(text: str, voice: str, api_key: str, out_path: str) -> None:
-    client = genai.Client(api_key=api_key)
-    response = client.models.generate_content(
+    response = google_client.call(api_key, lambda client: client.models.generate_content(
         model=GEMINI_TTS_MODEL,
         contents=f"Say this in an energetic, engaging social-media voice: {text}",
         config=types.GenerateContentConfig(
@@ -75,7 +75,7 @@ def _gemini_tts(text: str, voice: str, api_key: str, out_path: str) -> None:
                 )
             ),
         ),
-    )
+    ))
     pcm = response.candidates[0].content.parts[0].inline_data.data
     with wave.open(out_path, "wb") as wav:  # Gemini returns raw 24kHz 16-bit mono audio
         wav.setnchannels(1)

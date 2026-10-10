@@ -14,8 +14,9 @@ import time
 import urllib.parse
 import urllib.request
 
-from google import genai
 from google.genai import types
+
+import google_client
 from PIL import Image, ImageDraw, ImageFilter
 
 VEO_MODELS = {
@@ -102,8 +103,7 @@ def free_image(prompt: str, width: int, height: int, index: int, out_path: str, 
 
 def veo_clip(api_key: str, prompt: str, aspect_ratio: str, quality: str, out_path: str, log) -> str:
     """Generate one ~8 second AI video clip with Google Veo. Raises on failure."""
-    client = genai.Client(api_key=api_key)
-    operation = client.models.generate_videos(
+    operation = google_client.call(api_key, lambda client: client.models.generate_videos(
         model=VEO_MODELS.get(quality, VEO_MODELS["fast"]),
         prompt=prompt,
         config=types.GenerateVideosConfig(
@@ -112,7 +112,8 @@ def veo_clip(api_key: str, prompt: str, aspect_ratio: str, quality: str, out_pat
             number_of_videos=1,
             negative_prompt="text, letters, subtitles, captions, watermark, logo",
         ),
-    )
+    ))
+    client = google_client.make_client(api_key)
     waited = 0
     while not operation.done:
         time.sleep(10)
@@ -129,6 +130,7 @@ def veo_clip(api_key: str, prompt: str, aspect_ratio: str, quality: str, out_pat
     if not videos:
         raise RuntimeError("Veo returned no video (the prompt may have been blocked by safety filters)")
 
-    client.files.download(file=videos[0].video)
+    if not google_client.is_vertex(api_key):  # Vertex AI returns the video bytes directly
+        client.files.download(file=videos[0].video)
     videos[0].video.save(out_path)
     return out_path
