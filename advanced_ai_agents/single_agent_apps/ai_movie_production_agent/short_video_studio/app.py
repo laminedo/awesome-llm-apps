@@ -16,6 +16,13 @@ from dotenv import load_dotenv
 
 load_dotenv()  # read GOOGLE_API_KEY etc. from a .env file if you made one
 
+try:  # use up-to-date security certificates (fixes HTTPS errors with Python from python.org on Mac)
+    import certifi
+
+    os.environ.setdefault("SSL_CERT_FILE", certifi.where())
+except ImportError:
+    pass
+
 import uvicorn  # noqa: E402
 from fastapi import FastAPI, Header, HTTPException  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
