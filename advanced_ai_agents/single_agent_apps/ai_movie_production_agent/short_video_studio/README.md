@@ -38,6 +38,14 @@ Then open **http://localhost:8000** in your browser, click the ⚙️ icon (top 
 
 > Tip: to avoid pasting the key each time, copy `.env.example` to `.env` and put the key there.
 
+### Private web version (Hugging Face)
+A GitHub Action (`.github/workflows/deploy-short-video-studio.yml`) uploads this folder to a **private** Hugging Face Space every time the code changes.
+1. Create a Hugging Face **write** token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
+2. In your GitHub repo, go to **Settings → Secrets and variables → Actions** and add the secrets `HF_TOKEN` (your Hugging Face token) and `GOOGLE_API_KEY` (your Google key).
+3. Push a change. The app appears at `https://huggingface.co/spaces/<your-hf-username>/short-video-studio`.
+
+Only you can open it while logged in to Hugging Face. Videos are deleted from the Space after 24 hours.
+
 ### How long does it take?
 - **Free engine:** about 1–3 minutes per video.
 - **Veo engine:** about 3–10 minutes, because Google films each clip.
