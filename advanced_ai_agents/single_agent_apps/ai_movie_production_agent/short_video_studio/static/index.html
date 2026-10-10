@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Short Video Studio</title>
+  <meta name="description" content="Turn an idea into a short video for Facebook Reels and YouTube Shorts." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <!-- Frosted navigation bar -->
+  <nav class="nav">
+    <div class="nav-inner">
+      <div class="brand"><span class="brand-icon">▶</span> Studio</div>
+      <div class="nav-steps" id="navSteps">
+        <span data-step="1" class="active">Idea</span>
+        <span data-step="2">Script</span>
+        <span data-step="3">Video</span>
+      </div>
+      <button class="icon-btn" id="settingsBtn" aria-label="Settings">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h0a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h0a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </div>
+  </nav>
+
+  <main>
+    <!-- ========== STEP 1: IDEA ========== -->
+    <section class="view active" id="view1">
+      <header class="hero">
+        <p class="eyebrow">For Facebook Reels &amp; YouTube Shorts</p>
+        <h1>Ideas in.<br /><span class="gradient-text">Videos out.</span></h1>
+        <p class="lede">Describe your idea. AI writes the script, records the voiceover and creates the video.</p>
+      </header>
+
+      <div class="card">
+        <label class="label" for="idea">Your idea</label>
+        <textarea id="idea" rows="4" placeholder="e.g. 5 morning habits that will change your life"></textarea>
+        <div class="chips" id="ideaExamples">
+          <button class="chip">3 facts about the ocean nobody knows</button>
+          <button class="chip">Promo for my coffee shop in Dakar</button>
+          <button class="chip">A tiny robot's first day at school</button>
+        </div>
+      </div>
+
+      <div class="card grid">
+        <div class="field">
+          <span class="label">Format</span>
+          <div class="segmented" data-name="format">
+            <button data-value="vertical" class="selected"><span class="ratio r916"></span>9:16 · Reels / Shorts</button>
+            <button data-value="horizontal"><span class="ratio r169"></span>16:9 · YouTube</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="label">Length</span>
+          <div class="segmented" data-name="duration">
+            <button data-value="15">15s</button>
+            <button data-value="30" class="selected">30s</button>
+            <button data-value="45">45s</button>
+            <button data-value="60">60s</button>
+          </div>
+        </div>
+        <div class="field">
+          <label class="label" for="style">Style</label>
+          <select id="style">
+            <option>Inspiring</option>
+            <option>Funny</option>
+            <option>Educational</option>
+            <option>Dramatic storytelling</option>
+            <option>Product promo / ad</option>
+            <option>Mysterious</option>
+            <option>Calm &amp; relaxing</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="label" for="language">Language</label>
+          <select id="language"></select>
+        </div>
+      </div>
+
+      <!-- The engine switch -->
+      <div class="card">
+        <span class="label">Video engine</span>
+        <div class="engine-switch" id="engineSwitch">
+          <button class="engine selected" data-value="free">
+            <span class="engine-title">Free</span>
+            <span class="engine-sub">AI images + smooth zoom</span>
+            <span class="badge">$0</span>
+          </button>
+          <button class="engine" data-value="veo">
+            <span class="engine-title">Veo AI Video</span>
+            <span class="engine-sub">Real AI-filmed clips by Google</span>
+            <span class="badge paid">Paid</span>
+          </button>
+        </div>
+        <div class="veo-options" id="veoOptions" hidden>
+          <div class="field">
+            <span class="label">Veo quality</span>
+            <div class="segmented" data-name="veo_quality">
+              <button data-value="fast" class="selected">Fast · cheaper</button>
+              <button data-value="best">Best quality</button>
+            </div>
+          </div>
+          <p class="note" id="veoNote"></p>
+        </div>
+      </div>
+
+      <div class="card grid">
+        <div class="field">
+          <label class="label" for="voice">Voiceover</label>
+          <select id="voice"></select>
+        </div>
+        <div class="field">
+          <span class="label">Voice speed</span>
+          <div class="segmented" data-name="voice_speed">
+            <button data-value="Slow">Slow</button>
+            <button data-value="Normal" class="selected">Normal</button>
+            <button data-value="Fast">Fast</button>
+          </div>
+        </div>
+        <div class="field toggle-row">
+          <span>
+            <span class="label inline">Subtitles</span>
+            <span class="hint">Most people watch with sound off</span>
+          </span>
+          <label class="switch"><input type="checkbox" id="subtitles" checked /><span></span></label>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="btn primary large" id="writeBtn">
+          <span class="btn-label">Write my script</span><span class="spinner"></span>
+        </button>
+      </div>
+    </section>
+
+    <!-- ========== STEP 2: SCRIPT ========== -->
+    <section class="view" id="view2">
+      <header class="hero small">
+        <p class="eyebrow">Step 2 · Review</p>
+        <h2 id="scriptTitle" contenteditable="true" spellcheck="false"></h2>
+        <p class="lede">Edit anything you like. Every word here becomes part of your video.</p>
+      </header>
+
+      <div id="scenes" class="scenes"></div>
+
+      <div class="card">
+        <label class="label" for="caption">Post caption</label>
+        <textarea id="caption" rows="2"></textarea>
+        <label class="label" for="hashtags">Hashtags</label>
+        <input id="hashtags" type="text" />
+      </div>
+
+      <div class="actions">
+        <button class="btn secondary" id="backBtn">Back</button>
+        <button class="btn secondary" id="rewriteBtn">Rewrite</button>
+        <button class="btn primary large" id="makeBtn">Create video</button>
+      </div>
+    </section>
+
+    <!-- ========== STEP 3: VIDEO ========== -->
+    <section class="view" id="view3">
+      <div class="progress-wrap" id="progressWrap">
+        <div class="ring">
+          <svg viewBox="0 0 120 120"><circle class="track" cx="60" cy="60" r="52" /><circle class="bar" id="ringBar" cx="60" cy="60" r="52" /></svg>
+          <span id="percent">0%</span>
+        </div>
+        <h2 id="stepText">Starting…</h2>
+        <p class="lede" id="stepSub">Keep this page open. Free videos take about 1–3 minutes, Veo videos about 3–10.</p>
+        <details class="log"><summary>Details</summary><ol id="logList"></ol></details>
+      </div>
+
+      <div class="result" id="result" hidden>
+        <header class="hero small">
+          <p class="eyebrow">Done</p>
+          <h2>Your video is ready.</h2>
+        </header>
+        <div class="result-grid">
+          <div class="device" id="device">
+            <video id="player" controls playsinline></video>
+          </div>
+          <div class="card share">
+            <span class="label">Caption</span>
+            <p id="finalCaption" class="caption-text"></p>
+            <ul class="warnings" id="warnings" hidden></ul>
+            <button class="btn secondary full" id="copyCaption">Copy caption &amp; hashtags</button>
+            <a class="btn primary full" id="downloadBtn" download>Download MP4</a>
+            <div class="tips">
+              <p><strong>Facebook:</strong> Create → Reel → upload the MP4 → paste caption.</p>
+              <p><strong>YouTube:</strong> Create → Upload video. Vertical videos under 3 minutes become Shorts automatically.</p>
+            </div>
+            <button class="btn ghost full" id="newBtn">Make another video</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card error-card" id="errorCard" hidden>
+        <h3>Something went wrong</h3>
+        <p id="errorText"></p>
+        <button class="btn secondary" id="retryBtn">Back to script</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- Settings sheet -->
+  <dialog id="settings" class="sheet">
+    <form method="dialog">
+      <h3>Settings</h3>
+      <p class="hint" id="keyHint">Your Google API key writes the script (free tier works) and powers Veo videos (paid). Get one at
+        <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.
+        It is saved only in this browser.</p>
+      <label class="label" for="apiKey">Google API key</label>
+      <input id="apiKey" type="password" autocomplete="off" placeholder="AIza…" />
+      <div class="actions end">
+        <button class="btn primary" value="save" id="saveKey">Done</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

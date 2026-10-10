@@ -5,6 +5,8 @@
 
 This Streamlit app is an AI-powered movie production assistant that helps bring your movie ideas to life using Claude 3.5 Sonnet model. It automates the process of script writing and casting, allowing you to create compelling movie concepts with ease.
 
+> 🆕 **Want short videos for Reels & Shorts?** Try the [Short Video Studio](short_video_studio/) web app in this folder. It writes the script, records an AI voiceover and exports a ready-to-post MP4.
+
 ### Features
 - Generates script outlines based on your movie idea, genre, and target audience
 - Suggests suitable actors for main roles, considering their past performances and current availability
