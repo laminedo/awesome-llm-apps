@@ -25,7 +25,7 @@ except ImportError:
 
 import uvicorn  # noqa: E402
 from fastapi import FastAPI, Header, HTTPException  # noqa: E402
-from fastapi.responses import FileResponse  # noqa: E402
+from fastapi.responses import HTMLResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
@@ -233,9 +233,23 @@ app.mount("/outputs", StaticFiles(directory=OUTPUT_DIR), name="outputs")
 app.mount("/static", StaticFiles(directory=os.path.join(HERE, "static")), name="static")
 
 
-@app.get("/")
+@app.get("/", response_class=HTMLResponse)
 def home():
-    return FileResponse(os.path.join(HERE, "static", "index.html"))
+    """Serve the page with its CSS and JavaScript built in.
+
+    Private Hugging Face Spaces can't always load extra files in Safari (it blocks
+    the login cookie), so everything the page needs comes in this one response.
+    """
+    def read(name: str) -> str:
+        with open(os.path.join(HERE, "static", name), encoding="utf-8") as file:
+            return file.read()
+
+    html = read("index.html")
+    html = html.replace('<link rel="stylesheet" href="/static/style.css" />',
+                        f"<style>\n{read('style.css')}\n</style>")
+    html = html.replace('<script src="/static/app.js"></script>',
+                        f"<script>\n{read('app.js')}\n</script>")
+    return HTMLResponse(html, headers={"Cache-Control": "no-store"})
 
 
 if __name__ == "__main__":

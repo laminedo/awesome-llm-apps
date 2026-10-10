@@ -21,6 +21,14 @@ const state = {
   ...storage.get("prefs", {}),
 };
 let voices = {};
+
+// Private Hugging Face Spaces give the page a "__sign" login token. Safari blocks the
+// login cookie, so we also send the token with every request to stay logged in.
+const signToken = new URLSearchParams(location.search).get("__sign");
+function withSign(url) {
+  if (!signToken || !url) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}__sign=${encodeURIComponent(signToken)}`;
+}
 let script = null;
 let serverHasKey = false;
 let outputMaxAgeHours = 0;
@@ -47,7 +55,7 @@ function savePrefs() {
 function apiKey() { return storage.get("apiKey", ""); }
 
 async function api(path, body) {
-  const response = await fetch(path, {
+  const response = await fetch(withSign(path), {
     method: body ? "POST" : "GET",
     headers: { "Content-Type": "application/json", "X-Google-Api-Key": apiKey() },
     body: body ? JSON.stringify(body) : undefined,
@@ -270,9 +278,9 @@ function showResult(job) {
   $("#device").classList.toggle("wide", wide);
   $(".result-grid").classList.toggle("wide", wide);
   const player = $("#player");
-  player.src = job.video_url;
-  player.poster = job.thumbnail_url;
-  $("#downloadBtn").href = job.video_url;
+  player.src = withSign(job.video_url);
+  player.poster = withSign(job.thumbnail_url);
+  $("#downloadBtn").href = withSign(job.video_url);
   $("#downloadBtn").setAttribute("download", job.filename);
   $("#finalCaption").textContent = `${script.caption}\n\n${script.hashtags.join(" ")}`;
   const warnings = job.warnings || [];
