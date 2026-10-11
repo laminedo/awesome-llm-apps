@@ -15,7 +15,7 @@ from huggingface_hub.errors import HfHubHTTPError
 SPACE_NAME = os.getenv("HF_SPACE_NAME", "short-video-studio")
 APP_DIR = Path(__file__).resolve().parent.parent
 SKIP_DIRS = {"hf_space", "outputs", ".venv", "__pycache__"}
-SKIP_FILES = {".env", "install_mac.sh", "README.md"}
+SKIP_FILES = {".env", ".gitignore", "install_mac.sh", "README.md"}
 
 token = os.getenv("HF_TOKEN", "").strip()
 if not token:
