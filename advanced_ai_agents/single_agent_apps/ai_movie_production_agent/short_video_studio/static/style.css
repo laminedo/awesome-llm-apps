@@ -186,6 +186,8 @@ select {
 
 /* ---------- Buttons ---------- */
 .actions { display: flex; justify-content: center; gap: 12px; margin-top: 32px; flex-wrap: wrap; }
+.note.center { text-align: center; max-width: 520px; margin: 14px auto 0; }
+.btn.secondary .spinner { border-color: color-mix(in srgb, var(--text) 25%, transparent); border-top-color: var(--text); }
 .actions.end { justify-content: flex-end; margin-top: 20px; }
 .btn {
   border: 0; border-radius: 980px; padding: 10px 22px; font-size: 17px; font-weight: 500; cursor: pointer;

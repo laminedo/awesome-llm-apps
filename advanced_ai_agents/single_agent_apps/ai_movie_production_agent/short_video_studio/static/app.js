@@ -141,14 +141,14 @@ function fillVoices(prefs) {
   $("#language").addEventListener("change", () => { renderVoices(); savePrefs(); });
 }
 
-async function writeScript() {
+async function writeScript(makeVideoRightAway = false) {
   const idea = $("#idea").value.trim();
   if (idea.length < 3) { toast("Describe your idea first ✍️"); $("#idea").focus(); return; }
   if (needKey()) return;
 
-  const btn = $("#writeBtn");
-  btn.classList.add("loading"); btn.disabled = true;
-  $("#rewriteBtn").disabled = true;
+  const btn = makeVideoRightAway ? $("#quickBtn") : $("#writeBtn");
+  btn.classList.add("loading");
+  ["#writeBtn", "#quickBtn", "#rewriteBtn"].forEach((id) => { $(id).disabled = true; });
   try {
     script = await api("/api/script", {
       idea,
@@ -159,12 +159,13 @@ async function writeScript() {
       engine: state.engine,
     });
     renderScript();
-    showView(2);
+    if (makeVideoRightAway) await makeVideo();
+    else showView(2);
   } catch (error) {
     toast(error.message, 6000);
   } finally {
-    btn.classList.remove("loading"); btn.disabled = false;
-    $("#rewriteBtn").disabled = false;
+    btn.classList.remove("loading");
+    ["#writeBtn", "#quickBtn", "#rewriteBtn"].forEach((id) => { $(id).disabled = false; });
   }
 }
 
@@ -324,7 +325,8 @@ async function init() {
   $$("#ideaExamples .chip").forEach((chip) =>
     chip.addEventListener("click", () => { $("#idea").value = chip.textContent; $("#idea").focus(); }));
 
-  $("#writeBtn").addEventListener("click", writeScript);
+  $("#writeBtn").addEventListener("click", () => writeScript(false));
+  $("#quickBtn").addEventListener("click", () => writeScript(true));
   $("#rewriteBtn").addEventListener("click", () => { showView(1); writeScript(); });
   $("#backBtn").addEventListener("click", () => showView(1));
   $("#makeBtn").addEventListener("click", makeVideo);
