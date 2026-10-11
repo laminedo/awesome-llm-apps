@@ -12,27 +12,58 @@ jobs:
   probe:
     if: github.repository == 'laminedo/awesome-llm-apps'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -q huggingface_hub gradio_client
-      - name: Show how to call the best candidates
+      - run: pip install -q huggingface_hub gradio_client edge-tts && sudo apt-get install -y -qq ffmpeg >/dev/null
+      - name: Real lip-sync test (baby + cat)
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           python - <<'PY'
-          import os, inspect
-          import gradio_client
-          from gradio_client import Client
-          print("gradio_client", gradio_client.__version__, inspect.signature(Client.__init__))
-          for sid in ["meituan-longcat/LongCat-Video-Avatar-1.5-Demo", "victor/LongCat-Video-Avatar-1.5",
-                      "multimodalart/MoDA-fast-talking-head", "fffiloni/EchoMimic", "alexnasa/OmniAvatar"]:
-              print(f"\n######## {sid}")
+          import os, time, base64, subprocess, urllib.request, urllib.parse, json, shutil
+          from gradio_client import Client, handle_file
+          os.makedirs("t", exist_ok=True)
+          def img(name, prompt):
+              url = "https://image.pollinations.ai/prompt/" + urllib.parse.quote(prompt) + "?width=576&height=1024&nologo=true&model=flux&seed=7"
+              for _ in range(3):
+                  try:
+                      urllib.request.urlretrieve(url, f"t/{name}.jpg"); return f"t/{name}.jpg"
+                  except Exception as e:
+                      print("img retry", e); time.sleep(10)
+          baby = img("baby", "photorealistic portrait photo of a cute smiling baby looking straight at the camera, face centered, soft light, plain background")
+          cat = img("cat", "photorealistic portrait photo of a cute orange cat looking straight at the camera, face centered, front view, plain background")
+          subprocess.run(["edge-tts", "--voice", "en-US-AnaNeural", "--text", "Hello! I am the boss of this house. Where is my lunch?", "--write-media", "t/voice.mp3"], check=True)
+          subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", "t/voice.mp3", "-ar", "16000", "-ac", "1", "t/voice.wav"], check=True)
+          def info(path):
+              r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration:stream=codec_type,width,height", "-of", "json", path], capture_output=True, text=True)
+              return r.stdout.replace("\n", " ")
+          def thumbs(path, tag):
+              for t in ("0.3", "1.5", "2.6"):
+                  out = f"t/{tag}_{t}.jpg"
+                  subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", t, "-i", path, "-frames:v", "1", "-vf", "scale=180:-2", "-q:v", "6", out])
+                  if os.path.exists(out):
+                      print(f"THUMB {tag} {t} " + base64.b64encode(open(out, "rb").read()).decode())
+          print("voice:", info("t/voice.wav"))
+          tests = [
+            ("longcat", "victor/LongCat-Video-Avatar-1.5", lambda c, im: c.predict(handle_file(im), handle_file("t/voice.wav"),
+                 "A character is speaking expressively, looking at the camera.", "480p", 42, "Clean speech (fast)", "DBCache faster", api_name="/generate")),
+            ("moda", "multimodalart/MoDA-fast-talking-head", lambda c, im: c.predict(handle_file(im), handle_file("t/voice.wav"), "Happiness", 1.2, api_name="/generate_motion")),
+          ]
+          for tag, sid, call in tests:
               try:
                   c = Client(sid, token=os.environ["HF_TOKEN"], verbose=False)
-                  c.view_api(print_info=True)
               except Exception as e:
-                  print("view_api failed:", type(e).__name__, str(e)[:300])
+                  print(tag, "connect failed", e); continue
+              for kind, im in (("baby", baby), ("cat", cat)):
+                  t0 = time.time()
+                  try:
+                      res = call(c, im)
+                      path = res["video"] if isinstance(res, dict) else res
+                      print(f"RESULT {tag} {kind} OK in {time.time()-t0:.0f}s -> {info(path)}")
+                      thumbs(path, f"{tag}-{kind}")
+                  except Exception as e:
+                      print(f"RESULT {tag} {kind} FAILED in {time.time()-t0:.0f}s: {type(e).__name__}: {str(e)[:400]}")
           PY
