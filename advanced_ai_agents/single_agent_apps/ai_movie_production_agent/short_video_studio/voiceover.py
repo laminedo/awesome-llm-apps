@@ -14,7 +14,10 @@ from google.genai import types
 
 import google_client
 
-GEMINI_TTS_MODEL = os.getenv("GEMINI_TTS_MODEL", "gemini-2.5-flash-preview-tts")
+# Backup voice models to try, newest first (set GEMINI_TTS_MODEL to force one).
+TTS_MODELS = google_client.env_models("GEMINI_TTS_MODEL", [
+    "gemini-3.1-flash-tts-preview", "gemini-2.5-flash-preview-tts",
+])
 
 # Voices shown in the app, grouped by language. "id" is the Edge voice name.
 VOICES = {
@@ -64,8 +67,8 @@ async def _edge_tts(text: str, voice: str, rate: str, out_path: str) -> None:
 
 
 def _gemini_tts(text: str, voice: str, api_key: str, out_path: str) -> None:
-    response = google_client.call(api_key, lambda client: client.models.generate_content(
-        model=GEMINI_TTS_MODEL,
+    response = google_client.call_with_models(api_key, "tts", TTS_MODELS, lambda client, model: client.models.generate_content(
+        model=model,
         contents=f"Say this in an energetic, engaging social-media voice: {text}",
         config=types.GenerateContentConfig(
             response_modalities=["AUDIO"],
@@ -76,16 +79,27 @@ def _gemini_tts(text: str, voice: str, api_key: str, out_path: str) -> None:
             ),
         ),
     ))
-    pcm = response.candidates[0].content.parts[0].inline_data.data
-    with wave.open(out_path, "wb") as wav:  # Gemini returns raw 24kHz 16-bit mono audio
+    parts = (response.candidates or [None])[0]
+    parts = parts.content.parts if parts and parts.content and parts.content.parts else []
+    audio = next((p.inline_data for p in parts
+                  if p.inline_data and (p.inline_data.mime_type or "").startswith("audio/")), None)
+    if audio is None:
+        raise RuntimeError("Gemini returned no audio")
+    rate = 24000  # Gemini sends raw 16-bit mono PCM, e.g. "audio/L16;codec=pcm;rate=24000"
+    for piece in (audio.mime_type or "").split(";"):
+        if piece.strip().startswith("rate="):
+            rate = int(piece.strip()[5:])
+    with wave.open(out_path, "wb") as wav:
         wav.setnchannels(1)
         wav.setsampwidth(2)
-        wav.setframerate(24000)
-        wav.writeframes(pcm)
+        wav.setframerate(rate)
+        wav.writeframes(audio.data)
 
 
 def make_voiceover(text: str, voice: str, speed: str, api_key: str, out_base: str, log) -> str | None:
     """Create the voice file for one scene. Returns its path, or None for silence."""
+    if not text.strip():
+        return None  # nothing to say: a silent scene
     rate = {"Slow": "-10%", "Normal": "+0%", "Fast": "+12%"}.get(speed, "+0%")
 
     mp3_path = out_base + ".mp3"
@@ -101,5 +115,6 @@ def make_voiceover(text: str, voice: str, speed: str, api_key: str, out_base: st
         _gemini_tts(text, _gemini_voice_for(voice), api_key, wav_path)
         return wav_path
     except Exception as error:  # noqa: BLE001
-        log(f"⚠️ No voice could be recorded for: \"{text[:40]}…\" ({type(error).__name__}). That scene is silent.")
+        log(f"⚠️ No voice could be recorded for: \"{text[:40]}…\" "
+            f"({google_client.friendly_error(error)[:200]}). That scene is silent.")
         return None

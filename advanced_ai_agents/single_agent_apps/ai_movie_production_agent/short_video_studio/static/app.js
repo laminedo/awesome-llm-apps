@@ -31,6 +31,7 @@ function withSign(url) {
 }
 let script = null;
 let serverHasKey = false;
+let serverKeyHint = "";
 let outputMaxAgeHours = 0;
 
 // ---------- small helpers ----------
@@ -44,28 +45,60 @@ function toast(message, ms = 3200) {
 }
 
 function savePrefs() {
+  const old = storage.get("prefs", {});
   storage.set("prefs", {
     format: state.format, duration: state.duration, veo_quality: state.veo_quality,
     voice_speed: state.voice_speed, engine: state.engine,
-    style: $("#style").value, language: $("#language").value, voice: $("#voice").value,
+    // keep the saved language/voice if the lists haven't loaded (e.g. server unreachable)
+    style: $("#style").value, language: $("#language").value || old.language, voice: $("#voice").value || old.voice,
     subtitles: $("#subtitles").checked,
   });
 }
 
 function apiKey() { return storage.get("apiKey", ""); }
 
+function keyHint(key) { return key.length > 12 ? `${key.slice(0, 4)}…${key.slice(-4)}` : key; }
+
 async function api(path, body) {
+  const headers = { "Content-Type": "application/json" };
+  // Only send a browser key when you saved one; otherwise the server's key is used.
+  if (apiKey() && path !== "/api/config") headers["X-Google-Api-Key"] = apiKey();
   const response = await fetch(withSign(path), {
     method: body ? "POST" : "GET",
-    headers: { "Content-Type": "application/json", "X-Google-Api-Key": apiKey() },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
     const detail = Array.isArray(data.detail) ? data.detail.map((d) => d.msg).join(", ") : data.detail;
-    throw new Error(detail || `Request failed (${response.status})`);
+    const error = new Error(detail || `Request failed (${response.status})`);
+    error.status = response.status;
+    throw error;
   }
   return data;
+}
+
+function showFormError(message) {
+  $("#formError").hidden = !message;
+  $("#formError").textContent = message || "";
+  if (message) $("#formError").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function updateKeyStatus() {
+  const browserKey = apiKey();
+  let text;
+  if (browserKey && serverHasKey) {
+    text = `Using the key saved in this browser (${keyHint(browserKey)}). It replaces the server key (${serverKeyHint}).`;
+  } else if (browserKey) {
+    text = `Using the key saved in this browser (${keyHint(browserKey)}).`;
+  } else if (serverHasKey) {
+    text = `Using the server key (${serverKeyHint}). Paste a key below only if you want to replace it.`;
+  } else {
+    text = "No key yet. Paste your Google API key below.";
+  }
+  $("#keyStatus").textContent = text;
+  $("#clearKey").hidden = !(browserKey && serverHasKey);
+  $("#keyError").hidden = true;
 }
 
 function showView(n) {
@@ -145,6 +178,7 @@ async function writeScript(makeVideoRightAway = false) {
   const idea = $("#idea").value.trim();
   if (idea.length < 3) { toast("Describe your idea first ✍️"); $("#idea").focus(); return; }
   if (needKey()) return;
+  showFormError("");
 
   const btn = makeVideoRightAway ? $("#quickBtn") : $("#writeBtn");
   btn.classList.add("loading");
@@ -162,7 +196,7 @@ async function writeScript(makeVideoRightAway = false) {
     if (makeVideoRightAway) await makeVideo();
     else showView(2);
   } catch (error) {
-    toast(error.message, 6000);
+    showFormError(error.message);
   } finally {
     btn.classList.remove("loading");
     ["#writeBtn", "#quickBtn", "#rewriteBtn"].forEach((id) => { $(id).disabled = false; });
@@ -186,11 +220,11 @@ function renderScript() {
         ${script.scenes.length > 1 ? `<button class="scene-remove" data-remove="${i}">Remove</button>` : ""}
       </div>
       <label class="label">On-screen headline</label>
-      <input type="text" class="headline-input" data-field="on_screen_text" value="${escapeHtml(scene.on_screen_text)}" />
+      <input type="text" class="headline-input" data-field="on_screen_text" maxlength="80" value="${escapeHtml(scene.on_screen_text)}" />
       <label class="label">Voiceover</label>
-      <textarea rows="2" data-field="narration">${escapeHtml(scene.narration)}</textarea>
+      <textarea rows="2" data-field="narration" maxlength="600">${escapeHtml(scene.narration)}</textarea>
       <label class="label">What we see</label>
-      <textarea rows="2" data-field="visual_prompt">${escapeHtml(scene.visual_prompt)}</textarea>
+      <textarea rows="2" data-field="visual_prompt" maxlength="1500">${escapeHtml(scene.visual_prompt)}</textarea>
     </div>`).join("");
 
   $$("#scenes [data-field]").forEach((input) => {
@@ -256,15 +290,23 @@ async function makeVideo() {
 
 function pollJob(jobId) {
   clearTimeout(pollTimer);
+  let failures = 0;
   const tick = async () => {
     try {
       const job = await api(`/api/jobs/${jobId}`);
+      failures = 0;
       setProgress(job.progress, job.step);
       $("#logList").innerHTML = job.log.map((line) => `<li>${escapeHtml(line)}</li>`).join("");
       if (job.status === "done") return showResult(job);
       if (job.status === "error") return showError(job.error);
     } catch (error) {
-      // the server may be busy for a moment - just try again
+      if (error.status === 404) {
+        return showError("The app restarted and this video was lost. Click “Back to script” and create it again.");
+      }
+      failures += 1;  // the server may be busy for a moment - try again, but not forever
+      if (failures >= 45) {
+        return showError("Lost contact with the app for over a minute. Check it is still running, then try again.");
+      }
     }
     pollTimer = setTimeout(tick, 2000);
   };
@@ -307,18 +349,7 @@ async function init() {
   setupSegmented();
   setupEngine();
 
-  try {
-    const config = await api("/api/config");
-    voices = config.voices;
-    serverHasKey = config.server_has_key;
-    outputMaxAgeHours = config.output_max_age_hours || 0;
-  } catch {
-    toast("Can't reach the server. Is the app running?", 8000);
-  }
-  fillVoices(prefs);
-  if (serverHasKey) $("#keyHint").insertAdjacentHTML("afterbegin", "<b>A key is already set in your .env file.</b> ");
-  else if (!apiKey()) $("#settingsBtn").classList.add("attention");
-
+  // Buttons work straight away, even while the settings are still loading.
   $("#style").addEventListener("change", savePrefs);
   $("#voice").addEventListener("change", savePrefs);
   $("#subtitles").addEventListener("change", savePrefs);
@@ -330,8 +361,11 @@ async function init() {
   $("#rewriteBtn").addEventListener("click", () => { showView(1); writeScript(); });
   $("#backBtn").addEventListener("click", () => showView(1));
   $("#makeBtn").addEventListener("click", makeVideo);
-  $("#retryBtn").addEventListener("click", () => showView(2));
-  $("#newBtn").addEventListener("click", () => { script = null; $("#idea").value = ""; showView(1); });
+  $("#retryBtn").addEventListener("click", () => showView(script ? 2 : 1));
+  $("#newBtn").addEventListener("click", () => {
+    $("#player").pause();
+    script = null; $("#idea").value = ""; showFormError(""); updateVeoNote(); showView(1);
+  });
   $("#copyCaption").addEventListener("click", async () => {
     try { await navigator.clipboard.writeText($("#finalCaption").textContent); toast("Copied ✓"); }
     catch { toast("Couldn't copy - select the text and copy it manually"); }
@@ -339,13 +373,40 @@ async function init() {
 
   $("#settingsBtn").addEventListener("click", () => {
     $("#apiKey").value = apiKey();
+    updateKeyStatus();
     $("#settings").showModal();
   });
-  $("#saveKey").addEventListener("click", () => {
-    storage.set("apiKey", $("#apiKey").value.trim());
-    if (apiKey()) $("#settingsBtn").classList.remove("attention");
-    toast(apiKey() ? "Key saved in this browser" : "Key removed");
+  $("#saveKey").addEventListener("click", (event) => {
+    const key = $("#apiKey").value.trim();
+    if (key && !/^[\x21-\x7E]+$/.test(key)) {
+      event.preventDefault();  // keep the sheet open
+      $("#keyError").hidden = false;
+      $("#keyError").textContent = "This key contains a space or a special character. Copy it again with the copy button on the Google page.";
+      return;
+    }
+    storage.set("apiKey", key);
+    if (apiKey() || serverHasKey) $("#settingsBtn").classList.remove("attention");
+    toast(apiKey() ? `Key ${keyHint(key)} saved in this browser` : "Using the server key");
+    showFormError("");
   });
+  $("#clearKey").addEventListener("click", () => {
+    storage.set("apiKey", "");
+    $("#apiKey").value = "";
+    updateKeyStatus();
+    toast("Using the server key");
+  });
+
+  try {
+    const config = await api("/api/config");
+    voices = config.voices;
+    serverHasKey = config.server_has_key;
+    serverKeyHint = config.server_key_hint || "";
+    outputMaxAgeHours = config.output_max_age_hours || 0;
+  } catch {
+    toast("Can't reach the server. Is the app running?", 8000);
+  }
+  fillVoices(prefs);
+  if (!serverHasKey && !apiKey()) $("#settingsBtn").classList.add("attention");
 }
 
 init();

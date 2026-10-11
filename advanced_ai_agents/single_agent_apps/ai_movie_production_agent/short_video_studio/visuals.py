@@ -19,9 +19,15 @@ from google.genai import types
 import google_client
 from PIL import Image, ImageDraw, ImageFilter
 
+# Veo models to try, newest first ("-preview" names are the Gemini API ones,
+# "-001" names the Vertex AI ones). Set VEO_FAST_MODEL / VEO_MODEL to force one.
 VEO_MODELS = {
-    "fast": os.getenv("VEO_FAST_MODEL", "veo-3.1-fast-generate-preview"),
-    "best": os.getenv("VEO_MODEL", "veo-3.1-generate-preview"),
+    "fast": google_client.env_models("VEO_FAST_MODEL", [
+        "veo-3.1-fast-generate-preview", "veo-3.1-fast-generate-001", "veo-3.0-fast-generate-001",
+    ]),
+    "best": google_client.env_models("VEO_MODEL", [
+        "veo-3.1-generate-preview", "veo-3.1-generate-001", "veo-3.0-generate-001",
+    ]),
 }
 VEO_RESOLUTION = os.getenv("VEO_RESOLUTION", "720p")
 
@@ -103,17 +109,23 @@ def free_image(prompt: str, width: int, height: int, index: int, out_path: str, 
 
 def veo_clip(api_key: str, prompt: str, aspect_ratio: str, quality: str, out_path: str, log) -> str:
     """Generate one ~8 second AI video clip with Google Veo. Raises on failure."""
-    operation = google_client.call(api_key, lambda client: client.models.generate_videos(
-        model=VEO_MODELS.get(quality, VEO_MODELS["fast"]),
-        prompt=prompt,
-        config=types.GenerateVideosConfig(
-            aspect_ratio=aspect_ratio,
-            resolution=VEO_RESOLUTION,
-            number_of_videos=1,
-            negative_prompt="text, letters, subtitles, captions, watermark, logo",
-        ),
-    ))
-    client = google_client.make_client(api_key)
+    config = types.GenerateVideosConfig(
+        aspect_ratio=aspect_ratio,
+        resolution=VEO_RESOLUTION,
+        number_of_videos=1,
+        negative_prompt="text, letters, subtitles, captions, watermark, logo",
+        # Never auto-retry starting a clip: a retry could be billed as a second clip.
+        http_options=types.HttpOptions(retry_options=types.HttpRetryOptions(attempts=1)),
+    )
+
+    def start(client, model):
+        operation = client.models.generate_videos(
+            model=model, source=types.GenerateVideosSource(prompt=prompt), config=config,
+        )
+        return client, operation
+
+    models = VEO_MODELS.get(quality, VEO_MODELS["fast"])
+    client, operation = google_client.call_with_models(api_key, f"veo-{quality}", models, start)
     waited = 0
     while not operation.done:
         time.sleep(10)
@@ -130,7 +142,7 @@ def veo_clip(api_key: str, prompt: str, aspect_ratio: str, quality: str, out_pat
     if not videos:
         raise RuntimeError("Veo returned no video (the prompt may have been blocked by safety filters)")
 
-    if not google_client.is_vertex(api_key):  # Vertex AI returns the video bytes directly
+    if not client.vertexai:  # Vertex AI returns the video bytes directly
         client.files.download(file=videos[0].video)
     videos[0].video.save(out_path)
     return out_path

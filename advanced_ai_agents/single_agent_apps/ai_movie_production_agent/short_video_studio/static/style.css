@@ -258,6 +258,13 @@ select {
 .tips { margin-top: 18px; font-size: 14px; color: var(--muted); letter-spacing: 0; }
 .tips p { margin: 6px 0; }
 .error-card { text-align: center; margin-top: 48px; }
+.error-inline {
+  margin-top: 20px; font-size: 15px; letter-spacing: 0; word-break: break-word;
+  border: 1px solid color-mix(in srgb, var(--red) 45%, transparent);
+  background: color-mix(in srgb, var(--red) 8%, var(--card));
+}
+.key-status { font-size: 14px; letter-spacing: 0; padding: 10px 12px; border-radius: 12px; background: var(--fill); margin: 0 0 14px; }
+.key-error { color: var(--red); }
 .error-card p { color: var(--muted); word-break: break-word; }
 
 /* ---------- Settings sheet ---------- */

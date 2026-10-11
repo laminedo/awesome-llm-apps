@@ -1,7 +1,7 @@
 """Short Video Studio - the web server.
 
 Run it with:   python app.py
-Then open:     http://localhost:8000
+Then open:     http://127.0.0.1:8000
 """
 
 import os
@@ -14,7 +14,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 from dotenv import load_dotenv
 
-load_dotenv()  # read GOOGLE_API_KEY etc. from a .env file if you made one
+# Read GOOGLE_API_KEY etc. from this app's own .env file. It wins over old values
+# left in the shell or in other .env files, so the key you saved is the one used.
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"), override=True)
 
 try:  # use up-to-date security certificates (fixes HTTPS errors with Python from python.org on Mac)
     import certifi
@@ -29,6 +31,7 @@ from fastapi.responses import HTMLResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
+import google_client  # noqa: E402
 import video_builder  # noqa: E402
 import visuals  # noqa: E402
 from script_writer import write_script  # noqa: E402
@@ -60,13 +63,13 @@ class ScriptRequest(BaseModel):
 
 
 class Scene(BaseModel):
-    narration: str
-    on_screen_text: str = ""
-    visual_prompt: str
+    narration: str = Field(default="", max_length=600)
+    on_screen_text: str = Field(default="", max_length=80)
+    visual_prompt: str = Field(default="", max_length=1500)
 
 
 class VideoRequest(BaseModel):
-    title: str = "My short video"
+    title: str = Field(default="My short video", max_length=120)
     scenes: list[Scene] = Field(min_length=1, max_length=12)
     format: str = "vertical"
     engine: str = "free"  # "free" or "veo"
@@ -76,11 +79,20 @@ class VideoRequest(BaseModel):
     subtitles: bool = True
 
 
-def resolve_key(header_key: str | None) -> str:
-    key = (header_key or "").strip() or os.getenv("GOOGLE_API_KEY", "").strip()
-    if not key:
-        raise HTTPException(400, "Please add your Google API key in Settings (top right).")
-    return key
+def key_hint(key: str) -> str:
+    """Show only the start and end of a key, e.g. "AQ.A…x9Zk", so you can tell keys apart."""
+    return f"{key[:4]}…{key[-4:]}" if len(key) > 12 else "(too short)"
+
+
+def resolve_key(header_key: str | None) -> tuple[str, str]:
+    """Return (key, where it came from). A key typed in the browser's Settings wins."""
+    browser_key = (header_key or "").strip()
+    if browser_key:
+        return browser_key, "the key saved in this browser"
+    server_key = os.getenv("GOOGLE_API_KEY", "").strip().strip('"').strip("'")
+    if server_key:
+        return server_key, "the server key"
+    raise HTTPException(400, "Please add your Google API key in Settings (top right).")
 
 
 # ---------- background video jobs ----------
@@ -91,7 +103,6 @@ JOBS: dict[str, dict] = {}
 def run_job(job_id: str, request: VideoRequest, api_key: str) -> None:
     job = JOBS[job_id]
     work_dir = os.path.join(OUTPUT_DIR, job_id, "work")
-    os.makedirs(work_dir, exist_ok=True)
     width, height = FORMATS[request.format]["size"]
     aspect = FORMATS[request.format]["aspect"]
     scenes = request.scenes
@@ -107,6 +118,7 @@ def run_job(job_id: str, request: VideoRequest, api_key: str) -> None:
         log(message)
 
     try:
+        os.makedirs(work_dir, exist_ok=True)
         # 1) Voiceovers
         voice_paths = []
         for i, scene in enumerate(scenes):
@@ -121,17 +133,27 @@ def run_job(job_id: str, request: VideoRequest, api_key: str) -> None:
         if request.engine == "veo":
             step(f"Filming {total} AI clips with Google Veo (this takes a few minutes)", 0.15)
             done_count = 0
+            veo_gone = False  # stop asking Veo once Google says the model is retired
             lock = threading.Lock()
 
             def film(i: int):
-                nonlocal done_count
+                nonlocal done_count, veo_gone
                 path = os.path.join(work_dir, f"clip_{i}.mp4")
                 try:
+                    if veo_gone:
+                        raise RuntimeError("Veo is not available")
                     visuals.veo_clip(api_key, scenes[i].visual_prompt, aspect,
                                      request.veo_quality, path, log)
                     result = (path, True)
                 except Exception as error:  # noqa: BLE001 - keep going with a free picture
-                    log(f"⚠️ Scene {i + 1}: Veo failed ({error}). A free AI image was used instead.")
+                    if "no longer offers" in str(error):
+                        if not veo_gone:
+                            log("⚠️ Google no longer offers the Veo video models this app knows. "
+                                "Free AI images were used instead.")
+                        veo_gone = True
+                    elif not veo_gone:
+                        log(f"⚠️ Scene {i + 1}: Veo failed ({google_client.friendly_error(error)[:300]}). "
+                            "A free AI image was used instead.")
                     image = os.path.join(work_dir, f"image_{i}.jpg")
                     result = (visuals.free_image(scenes[i].visual_prompt, width, height, i, image, log), False)
                 with lock:
@@ -166,8 +188,6 @@ def run_job(job_id: str, request: VideoRequest, api_key: str) -> None:
         final_path = os.path.join(OUTPUT_DIR, job_id, name)
         video_builder.join_scenes(scene_files, final_path, work_dir)
         video_builder.make_thumbnail(final_path, os.path.join(OUTPUT_DIR, job_id, "thumbnail.jpg"))
-        if os.getenv("KEEP_WORK_FILES", "").lower() not in ("1", "true", "yes"):
-            shutil.rmtree(work_dir, ignore_errors=True)
 
         job.update(
             status="done", progress=1.0, step="Your video is ready",
@@ -176,7 +196,11 @@ def run_job(job_id: str, request: VideoRequest, api_key: str) -> None:
         )
     except Exception as error:  # noqa: BLE001 - report any problem to the user
         traceback.print_exc()
-        job.update(status="error", step="Something went wrong", error=str(error))
+        job.update(status="error", step="Something went wrong", error=google_client.friendly_error(error))
+    finally:
+        job["finished"] = time.time()
+        if os.getenv("KEEP_WORK_FILES", "").lower() not in ("1", "true", "yes"):
+            shutil.rmtree(work_dir, ignore_errors=True)
 
 
 def clean_old_outputs() -> None:
@@ -185,7 +209,11 @@ def clean_old_outputs() -> None:
     cutoff = time.time() - OUTPUT_MAX_AGE_HOURS * 3600
     for job_id in os.listdir(OUTPUT_DIR):
         path = os.path.join(OUTPUT_DIR, job_id)
-        if os.path.isdir(path) and os.path.getmtime(path) < cutoff:
+        job = JOBS.get(job_id)
+        if job and job["status"] == "running":
+            continue  # never delete a video that is still being made
+        finished = job.get("finished") if job else None
+        if os.path.isdir(path) and (finished or os.path.getmtime(path)) < cutoff:
             shutil.rmtree(path, ignore_errors=True)
             JOBS.pop(job_id, None)
 
@@ -194,25 +222,28 @@ def clean_old_outputs() -> None:
 
 @app.get("/api/config")
 def config():
-    return {"server_has_key": bool(os.getenv("GOOGLE_API_KEY")), "voices": VOICES,
-            "output_max_age_hours": OUTPUT_MAX_AGE_HOURS}
+    server_key = os.getenv("GOOGLE_API_KEY", "").strip()
+    return {"server_has_key": bool(server_key), "server_key_hint": key_hint(server_key) if server_key else "",
+            "voices": VOICES, "output_max_age_hours": OUTPUT_MAX_AGE_HOURS}
 
 
 @app.post("/api/script")
 def create_script(request: ScriptRequest, x_google_api_key: str | None = Header(default=None)):
-    api_key = resolve_key(x_google_api_key)
+    api_key, source = resolve_key(x_google_api_key)
     try:
         return write_script(api_key, request.idea, request.style, request.platform,
                             request.duration, request.language, request.engine)
     except Exception as error:  # noqa: BLE001
-        raise HTTPException(502, f"The script writer had a problem: {error}") from error
+        traceback.print_exc()
+        message = google_client.friendly_error(error, source, key_hint(api_key))
+        raise HTTPException(502, f"The script writer had a problem: {message}") from error
 
 
 @app.post("/api/video")
 def create_video(request: VideoRequest, x_google_api_key: str | None = Header(default=None)):
     if request.format not in FORMATS:
         raise HTTPException(400, "Unknown format")
-    api_key = resolve_key(x_google_api_key)
+    api_key, _ = resolve_key(x_google_api_key)
     clean_old_outputs()
     job_id = uuid.uuid4().hex[:12]
     JOBS[job_id] = {"id": job_id, "status": "running", "progress": 0.0, "step": "Starting",

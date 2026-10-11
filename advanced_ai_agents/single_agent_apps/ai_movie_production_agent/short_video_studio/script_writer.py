@@ -14,7 +14,13 @@ from google.genai import types
 
 import google_client
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+# Models to try, newest first. Google retires models over time (in Sept 2026 it
+# closed gemini-2.5-flash to new users), so the first one that answers is used.
+# Set GEMINI_MODEL in .env / Space settings to force a specific model.
+SCRIPT_MODELS = google_client.env_models("GEMINI_MODEL", [
+    "gemini-3.8-flash", "gemini-3.6-flash", "gemini-3.5-flash",
+    "gemini-flash-latest", "gemini-2.5-flash",
+])
 
 # The exact JSON shape we want back from Gemini.
 SCRIPT_SCHEMA = {
@@ -82,17 +88,50 @@ Rules:
 - hashtags: 5 to 8 relevant hashtags, each starting with #.
 """
 
-    response = google_client.call(api_key, lambda client: client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=SCRIPT_SCHEMA,
-            temperature=0.9,
-        ),
-    ))
-    script = json.loads(response.text)
-    script["hashtags"] = [
-        tag if tag.startswith("#") else f"#{tag}" for tag in script.get("hashtags", [])
-    ]
+    config = types.GenerateContentConfig(
+        response_mime_type="application/json",
+        response_schema=SCRIPT_SCHEMA,
+        temperature=0.9,
+    )
+    script = None
+    for _ in range(2):  # one retry if the answer comes back cut off / not valid JSON
+        response = google_client.call_with_models(
+            api_key, "script", SCRIPT_MODELS,
+            lambda client, model: client.models.generate_content(model=model, contents=prompt, config=config),
+        )
+        script = _parse(response)
+        if script:
+            break
+    if not script:
+        raise RuntimeError("The AI's answer was incomplete. Please click the button again.")
     return script
+
+
+def _parse(response) -> dict | None:
+    """Read Gemini's JSON answer safely. Returns None if it should be retried."""
+    feedback = getattr(response, "prompt_feedback", None)
+    if feedback and feedback.block_reason:
+        raise RuntimeError(
+            f"Google blocked this idea ({feedback.block_reason}). Try describing it differently."
+        )
+    candidate = (response.candidates or [None])[0]
+    reason = str(getattr(candidate, "finish_reason", "") or "")
+    if "SAFETY" in reason or "PROHIBITED" in reason:
+        raise RuntimeError("Google's safety filter stopped this script. Try describing the idea differently.")
+    try:
+        script = json.loads(response.text or "")
+    except (json.JSONDecodeError, TypeError):
+        return None
+    scenes = [
+        {key: str(scene.get(key) or "") for key in ("narration", "on_screen_text", "visual_prompt")}
+        for scene in (script.get("scenes") or []) if isinstance(scene, dict)
+    ]
+    if not scenes:
+        return None
+    return {
+        "title": str(script.get("title") or "My short video"),
+        "caption": str(script.get("caption") or ""),
+        "hashtags": [tag if tag.startswith("#") else f"#{tag}"
+                     for tag in (str(t).strip() for t in (script.get("hashtags") or [])) if tag],
+        "scenes": scenes,
+    }

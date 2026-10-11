@@ -13,7 +13,13 @@ import subprocess
 import textwrap
 
 import imageio_ffmpeg
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, features
+
+try:  # used to draw Arabic correctly when Pillow can't do it by itself (e.g. on a Mac)
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+except ImportError:  # pragma: no cover - optional
+    arabic_reshaper = None
 
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 FPS = 30
@@ -34,11 +40,31 @@ FONT_CANDIDATES = [
 ]
 
 
-def _font(size: int) -> ImageFont.FreeTypeFont:
-    for path in FONT_CANDIDATES:
+# Fonts that contain Arabic letters (most fonts above don't, and would draw boxes).
+ARABIC_FONTS = [
+    "/System/Library/Fonts/SFArabic.ttf",
+    "/System/Library/Fonts/GeezaPro.ttc",
+    "/System/Library/Fonts/Supplemental/GeezaPro.ttc",
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "C:/Windows/Fonts/arialbd.ttf",
+    *sorted(glob.glob("/usr/share/fonts/**/NotoSansArabic-Bold.ttf", recursive=True)),
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+]
+_ARABIC = re.compile("[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]")
+_HAS_RAQM = features.check_feature("raqm")  # Pillow can shape Arabic by itself
+
+
+def _font(size: int, text: str = "") -> ImageFont.FreeTypeFont:
+    arabic = bool(_ARABIC.search(text))
+    candidates = [*ARABIC_FONTS, *FONT_CANDIDATES] if arabic else FONT_CANDIDATES
+    # Without Pillow's own Arabic support we pre-shape the text (see _wrap), so the
+    # basic engine must draw it exactly as given.
+    engine = ImageFont.Layout.BASIC if arabic and not _HAS_RAQM else None
+    for path in candidates:
         if os.path.exists(path):
             try:
-                return ImageFont.truetype(path, size)
+                return ImageFont.truetype(path, size, layout_engine=engine)
             except OSError:
                 continue
     return ImageFont.load_default(size=size)
@@ -69,6 +95,9 @@ def _wrap(draw: ImageDraw.ImageDraw, text: str, font, max_width: int) -> list[st
             lines[-1] = f"{lines[-1]} {word}"
         else:
             lines.append(word)
+    if _ARABIC.search(text) and not _HAS_RAQM and arabic_reshaper:
+        # Join the letters and put them right-to-left, one line at a time.
+        lines = [get_display(arabic_reshaper.reshape(line)) for line in lines]
     return lines
 
 
@@ -76,7 +105,7 @@ def headline_overlay(text: str, width: int, height: int, out_path: str) -> str:
     """Big bold headline near the top, with a soft shadow (transparent PNG)."""
     image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
-    font = _font(int(min(width, height) * 0.085))
+    font = _font(int(min(width, height) * 0.085), text)
     lines = _wrap(draw, text.strip(), font, int(width * 0.84))
     line_height = int(font.size * 1.18)
     y = int(height * (0.13 if height > width else 0.10))
@@ -95,7 +124,7 @@ def subtitle_overlay(text: str, width: int, height: int, out_path: str) -> str:
     """Subtitle in a rounded, frosted-dark pill near the bottom (transparent PNG)."""
     image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
-    font = _font(int(min(width, height) * 0.052))
+    font = _font(int(min(width, height) * 0.052), text)
     lines = _wrap(draw, text.strip(), font, int(width * 0.78))
     line_height = int(font.size * 1.25)
     pad_x, pad_y = int(font.size * 0.8), int(font.size * 0.5)
@@ -162,9 +191,11 @@ def build_scene(
         inputs += ["-loop", "1", "-framerate", str(FPS), "-t", str(duration), "-i", visual_path]
         # Slow "Ken Burns" zoom: in on even scenes, out on odd scenes.
         zoom = f"(1+0.12*t/{duration})" if index % 2 == 0 else f"(1.12-0.12*t/{duration})"
-        filters.append(
-            f"[0:v]scale=w='trunc({width}*{zoom}/2)*2':h=-2:eval=frame,"
-            f"crop={width}:{height},setsar=1,fps={FPS}[bg]"
+        zoomed_w, zoomed_h = f"trunc({width}*{zoom}/2)*2", f"trunc({height}*{zoom}/2)*2"
+        filters.append(  # the crop offset follows the zoom so the picture stays centred
+            f"[0:v]scale=w='{zoomed_w}':h='{zoomed_h}':eval=frame,"
+            f"crop={width}:{height}:x='({zoomed_w}-{width})/2':y='({zoomed_h}-{height})/2',"
+            f"setsar=1,fps={FPS}[bg]"
         )
 
     # Input 1: the voiceover (or silence).
@@ -223,7 +254,8 @@ def join_scenes(scene_paths: list[str], out_path: str, work_dir: str) -> str:
     list_file = os.path.join(work_dir, "scenes.txt")
     with open(list_file, "w", encoding="utf-8") as file:
         for path in scene_paths:
-            file.write(f"file '{os.path.abspath(path)}'\n")
+            escaped = os.path.abspath(path).replace("'", "'\\''")  # FFmpeg list quoting
+            file.write(f"file '{escaped}'\n")
     run_ffmpeg([
         "-f", "concat", "-safe", "0", "-i", list_file,
         "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
@@ -234,7 +266,8 @@ def join_scenes(scene_paths: list[str], out_path: str, work_dir: str) -> str:
 
 
 def make_thumbnail(video_path: str, out_path: str) -> str:
-    run_ffmpeg(["-ss", "1", "-i", video_path, "-frames:v", "1", "-q:v", "3", out_path])
+    start = "1" if media_info(video_path)[0] > 1.5 else "0"
+    run_ffmpeg(["-ss", start, "-i", video_path, "-frames:v", "1", "-q:v", "3", out_path])
     return out_path
 
 

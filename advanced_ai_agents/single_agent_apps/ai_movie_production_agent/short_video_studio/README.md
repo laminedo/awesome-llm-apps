@@ -34,7 +34,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Then open **http://localhost:8000** in your browser, click the ⚙️ icon (top right) and paste your Google API key.
+Then open **http://127.0.0.1:8000** in your browser, click the ⚙️ icon (top right) and paste your Google API key.
 
 > Tip: to avoid pasting the key each time, copy `.env.example` to `.env` and put the key there.
 
@@ -65,4 +65,6 @@ Finished videos are saved in the `outputs/` folder.
 ### Troubleshooting
 - **"API key not valid"**: paste the key again in ⚙️ Settings.
 - **A scene is silent or shows a color gradient**: the free voice or image service was busy or unreachable. Try again. The app tells you on the result screen when this happens.
-- **Veo errors**: check that billing is on for your key. If Google renames the models, update `VEO_MODEL` / `VEO_FAST_MODEL` in `.env` ([model list](https://ai.google.dev/gemini-api/docs/video)).
+- **Which key is used?** Open ⚙️ Settings: it shows the start and end of the key in use. A key saved in the browser replaces the server key; click **Use the server key** to go back. Re-running the Mac installer lets you replace the saved key.
+- **Retired AI models**: Google retires models over time. The app tries a list of current models and uses the first one that works. To force one, set `GEMINI_MODEL`, `GEMINI_TTS_MODEL`, `VEO_FAST_MODEL` or `VEO_MODEL` in `.env` ([model list](https://ai.google.dev/gemini-api/docs/models)).
+- **Veo errors**: check that billing is on for your key.

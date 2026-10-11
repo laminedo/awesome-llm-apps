@@ -3,7 +3,7 @@ FROM python:3.12-slim
 
 # Fonts for the video headlines and subtitles.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && apt-get install -y --no-install-recommends fonts-dejavu-core libfribidi0 \
     && (apt-get install -y --no-install-recommends fonts-inter || true) \
     && rm -rf /var/lib/apt/lists/*
 

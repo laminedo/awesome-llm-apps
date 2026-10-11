@@ -137,6 +137,7 @@
         </button>
       </div>
       <p class="note center">“Create my video” does everything in one click. “Write script first” lets you edit the words before the video is made.</p>
+      <div class="card error-inline" id="formError" role="alert" hidden></div>
     </section>
 
     <!-- ========== STEP 2: SCRIPT ========== -->
@@ -215,9 +216,12 @@
       <p class="hint" id="keyHint">Your Google API key writes the script (free tier works) and powers Veo videos (paid). Get one at
         <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a>.
         It is saved only in this browser.</p>
+      <p class="key-status" id="keyStatus"></p>
       <label class="label" for="apiKey">Google API key</label>
       <input id="apiKey" type="password" autocomplete="off" placeholder="AIza…" />
+      <p class="note key-error" id="keyError" hidden></p>
       <div class="actions end">
+        <button class="btn secondary" type="button" id="clearKey" hidden>Use the server key</button>
         <button class="btn primary" value="save" id="saveKey">Done</button>
       </div>
     </form>

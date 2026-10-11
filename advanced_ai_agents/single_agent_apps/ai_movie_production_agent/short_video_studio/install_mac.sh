@@ -32,42 +32,73 @@ fi
 echo "Using $("$PY" --version) at $PY"
 
 # 2) Download the app files (re-running this updates them; your key is kept).
+#    Files go to a temporary folder first, so a dropped connection can't break the app.
 say "Downloading Short Video Studio into $APP_DIR…"
 mkdir -p "$APP_DIR/static"
+UPDATE_DIR="$APP_DIR/.update"
+rm -rf "$UPDATE_DIR" && mkdir -p "$UPDATE_DIR/static"
 for file in $FILES; do
-  curl -fsSL -o "$APP_DIR/$file" "$BASE/$file"
+  curl -fsSL -o "$UPDATE_DIR/$file" "$BASE/$file"
 done
+for file in $FILES; do
+  mv -f "$UPDATE_DIR/$file" "$APP_DIR/$file"
+done
+rm -rf "$UPDATE_DIR"
 
-# 3) Install the Python packages in a private environment.
+# 3) Install / update the Python packages in a private environment.
 say "Installing the app (1–2 minutes the first time)…"
 cd "$APP_DIR"
-[ -x .venv/bin/python ] || "$PY" -m venv .venv
+if ! ./.venv/bin/python -c "import sys" 2>/dev/null; then  # missing or broken: (re)create it
+  rm -rf .venv
+  "$PY" -m venv .venv
+fi
 ./.venv/bin/python -m pip install --quiet --upgrade pip
-./.venv/bin/python -m pip install --quiet -r requirements.txt
+./.venv/bin/python -m pip install --quiet --upgrade -r requirements.txt
 
-# 4) Save the Google API key (asked only once).
-if ! grep -q "^GOOGLE_API_KEY=..*" .env 2>/dev/null; then
+# 4) Save the Google API key. If one is saved already, you can keep it or replace it.
+CURRENT=$(grep -E '^GOOGLE_API_KEY=' .env 2>/dev/null | head -1 | cut -d= -f2- || true)
+if [ -n "$CURRENT" ]; then
+  say "Your saved Google API key is ${CURRENT:0:4}…${CURRENT: -4}"
+  echo "Paste a NEW key to replace it (it stays hidden), or just press Enter to keep it:"
+else
   say "Paste your Google API key and press Enter (it stays hidden; press Enter to skip):"
-  read -r -s KEY < /dev/tty || KEY=""
-  echo
-  if [ -n "$KEY" ]; then
-    printf "GOOGLE_API_KEY=%s\n" "$KEY" > .env
-    chmod 600 .env
-    echo "Key saved in $APP_DIR/.env"
-  else
-    echo "Skipped. You can paste it later in the app (⚙️ icon, top right)."
-  fi
+fi
+read -r -s KEY < /dev/tty || KEY=""
+echo
+# Remove spaces, line breaks and invisible paste codes that sometimes come with a copy.
+KEY=$(printf '%s' "$KEY" | sed $'s/\x1b\\[20[01]~//g' | tr -d '[:space:]')
+if [ -n "$KEY" ]; then
+  { grep -v -E '^GOOGLE_API_KEY=' .env 2>/dev/null || true; printf "GOOGLE_API_KEY=%s\n" "$KEY"; } > .env.new
+  mv -f .env.new .env
+  chmod 600 .env
+  echo "Key ${KEY:0:4}…${KEY: -4} saved in $APP_DIR/.env"
+elif [ -n "$CURRENT" ]; then
+  echo "Keeping your saved key."
+else
+  echo "Skipped. You can paste it later in the app (⚙️ icon, top right)."
 fi
 
 # 5) Create a double-click launcher on the Desktop.
 cat > "$LAUNCHER" <<LAUNCH
 #!/bin/bash
 cd "$APP_DIR"
+if curl -s -o /dev/null http://127.0.0.1:8000/; then
+  echo "Short Video Studio is already running in another Terminal window. Opening it…"
+  open "http://127.0.0.1:8000"
+  exit 0
+fi
 # Open the browser only once the app is really ready (the first start can be slow).
-(for i in \$(seq 1 90); do curl -s -o /dev/null http://127.0.0.1:8000/ && break; sleep 1; done; open "http://127.0.0.1:8000") &
+(for i in \$(seq 1 90); do curl -s -o /dev/null http://127.0.0.1:8000/ && { open "http://127.0.0.1:8000"; exit 0; }; sleep 1; done) &
 ./.venv/bin/python app.py
 LAUNCH
 chmod +x "$LAUNCHER"
+
+# 6) Stop an older copy that is still running, so the updated app is the one you use.
+if curl -s http://127.0.0.1:8000/api/config 2>/dev/null | grep -q server_has_key; then
+  say "Stopping the copy of Short Video Studio that is already running…"
+  lsof -nP -iTCP:8000 -sTCP:LISTEN -t 2>/dev/null | xargs kill 2>/dev/null || true
+  for i in $(seq 1 20); do curl -s -o /dev/null http://127.0.0.1:8000/ || break; sleep 0.5; done
+fi
 
 say "All done! ✅"
 printf "Next time, just double-click \033[1m'Short Video Studio'\033[0m on your Desktop.\n"
