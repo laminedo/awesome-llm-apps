@@ -9,7 +9,17 @@ Type an idea, and the app:
 3. 🎥 **Makes the visuals.** A switch lets you pick:
    - **Free:** an AI image for each scene with a smooth "Ken Burns" zoom ($0).
    - **Veo AI Video:** real AI-filmed clips from Google Veo (paid by Google, per second of video).
+   - **Talking character:** a photo or AI character whose mouth moves along with the voice (see below).
 4. 🎞️ **Edits the video.** It adds big headlines and subtitles, then exports an MP4 in **9:16** (Reels/Shorts) or **16:9** (YouTube).
+
+### 🗣️ Talking character mode
+Upload a photo or describe a character (a baby, a cat, a grandpa…). The script is written in the character's own voice, and its mouth moves along with the voiceover. You can add a voice effect: **Baby**, **Chipmunk** or **Deep**.
+
+- The mouth animation runs on free GPU Spaces on Hugging Face. **MoDA** is fast and handles human faces. **LongCat-Video-Avatar 1.5** is slower but also works for animals.
+- It needs a Hugging Face token (`HF_TOKEN`) so the GPU time counts on your account; Hugging Face PRO gets more GPU time. The online version gets it automatically from the `HF_TOKEN` GitHub secret (or `HF_GPU_TOKEN`, if you set one). On a Mac, the installer asks for it.
+- Animal videos use a lot of GPU time (about 1.5 minutes per 5 seconds of talking), so keep them at 15–30 seconds.
+- If the talking service is busy or fails, the video still gets made with the still picture, and a warning is shown.
+- Only use photos you have permission to use, and mark the videos as AI-generated when you post them.
 
 ### What you need
 - **Python 3.10 or newer** ([download](https://www.python.org/downloads/)).
@@ -59,7 +69,8 @@ Finished videos are saved in the `outputs/` folder.
 | `script_writer.py` | The AI script writer (Gemini) |
 | `voiceover.py` | The AI voiceover (Edge voices, with Gemini as a backup) |
 | `visuals.py` | Free AI images or Google Veo clips |
-| `video_builder.py` | The editor: zoom, headlines, subtitles, final MP4 (FFmpeg) |
+| `video_builder.py` | The editor: zoom, headlines, subtitles, voice effects, final MP4 (FFmpeg) |
+| `talking.py`, `lipsync.py` | Talking character mode: the character picture and the mouth animation on Hugging Face GPUs |
 | `static/` | The Apple-style web page (HTML, CSS, JavaScript) |
 
 ### Troubleshooting
