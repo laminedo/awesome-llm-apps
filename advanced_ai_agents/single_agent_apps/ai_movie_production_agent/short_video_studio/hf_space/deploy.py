@@ -47,6 +47,10 @@ gpu_token = os.getenv("HF_GPU_TOKEN", "").strip() or token
 api.add_space_secret(repo_id, "HF_TOKEN", gpu_token)
 print("Saved HF_TOKEN (for talking characters) as a hidden Space secret.")
 
+# Stamp this deploy with a version the app shows in Settings (and we check below).
+VERSION = os.getenv("GITHUB_SHA", "local")[:7]
+(APP_DIR / "version.txt").write_text(VERSION, encoding="utf-8")
+
 # Upload all app files + the Space README, and remove files that no longer exist.
 local_files = {}
 for path in APP_DIR.rglob("*"):
@@ -54,14 +58,12 @@ for path in APP_DIR.rglob("*"):
     if path.is_file() and not (set(relative.parts) & SKIP_DIRS) and str(relative) not in SKIP_FILES:
         local_files[relative.as_posix()] = path
 local_files["README.md"] = APP_DIR / "hf_space" / "README.md"
-VERSION = os.getenv("GITHUB_SHA", "local")[:7]
 
 remote_files = set(api.list_repo_files(repo_id, repo_type="space"))
 operations = [CommitOperationAdd(path_in_repo=name, path_or_fileobj=str(path))
               for name, path in sorted(local_files.items())]
-operations.append(CommitOperationAdd(path_in_repo="version.txt", path_or_fileobj=VERSION.encode()))
 operations += [CommitOperationDelete(path_in_repo=name)
-               for name in sorted(remote_files - set(local_files) - {".gitattributes", "version.txt"})]
+               for name in sorted(remote_files - set(local_files) - {".gitattributes"})]
 
 sha = os.getenv("GITHUB_SHA", "local")[:7]
 info = api.create_commit(repo_id, operations, repo_type="space", commit_message=f"Deploy from GitHub {sha}")
