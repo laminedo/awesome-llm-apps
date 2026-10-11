@@ -39,6 +39,11 @@ from script_writer import write_script  # noqa: E402
 from voiceover import VOICES, make_voiceover  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+try:  # written by the Hugging Face deploy; "local" on your computer
+    with open(os.path.join(HERE, "version.txt"), encoding="utf-8") as _file:
+        VERSION = _file.read().strip()
+except OSError:
+    VERSION = "local"
 OUTPUT_DIR = os.path.join(HERE, "outputs")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 # On a web server, delete finished videos after this many hours (0 = keep forever).
@@ -238,7 +243,7 @@ def clean_old_outputs() -> None:
 def config():
     server_key = os.getenv("GOOGLE_API_KEY", "").strip()
     return {"server_has_key": bool(server_key), "server_key_hint": key_hint(server_key) if server_key else "",
-            "talking_ready": bool(os.getenv("HF_TOKEN")),
+            "talking_ready": bool(os.getenv("HF_TOKEN")), "version": VERSION,
             "voices": VOICES, "output_max_age_hours": OUTPUT_MAX_AGE_HOURS}
 
 

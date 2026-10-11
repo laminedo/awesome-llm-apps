@@ -54,12 +54,14 @@ for path in APP_DIR.rglob("*"):
     if path.is_file() and not (set(relative.parts) & SKIP_DIRS) and str(relative) not in SKIP_FILES:
         local_files[relative.as_posix()] = path
 local_files["README.md"] = APP_DIR / "hf_space" / "README.md"
+VERSION = os.getenv("GITHUB_SHA", "local")[:7]
 
 remote_files = set(api.list_repo_files(repo_id, repo_type="space"))
 operations = [CommitOperationAdd(path_in_repo=name, path_or_fileobj=str(path))
               for name, path in sorted(local_files.items())]
+operations.append(CommitOperationAdd(path_in_repo="version.txt", path_or_fileobj=VERSION.encode()))
 operations += [CommitOperationDelete(path_in_repo=name)
-               for name in sorted(remote_files - set(local_files) - {".gitattributes"})]
+               for name in sorted(remote_files - set(local_files) - {".gitattributes", "version.txt"})]
 
 sha = os.getenv("GITHUB_SHA", "local")[:7]
 info = api.create_commit(repo_id, operations, repo_type="space", commit_message=f"Deploy from GitHub {sha}")
@@ -96,7 +98,20 @@ def print_logs(kind: str, seconds: int = 20) -> None:
 first = api.get_space_runtime(repo_id)
 print(f"  New revision: {str(new_revision)[:7]}; Space runtime info: "
       f"{ {k: v for k, v in (first.raw or {}).items() if k in ('stage', 'sha', 'errorMessage')} }")
-last_stage = None
+host = api.space_info(repo_id).host  # e.g. https://user-space.hf.space
+
+
+def live_version() -> str:
+    """Ask the running app which version it is (proves the new code is really live)."""
+    try:
+        request = urllib.request.Request(f"{host}/api/config", headers={"Authorization": f"Bearer {token}"})
+        with urllib.request.urlopen(request, timeout=20) as response:
+            return json.loads(response.read()).get("version", "")
+    except Exception as error:  # noqa: BLE001
+        return f"unreachable ({type(error).__name__})"
+
+
+last_stage, last_live = None, None
 for _ in range(180):
     runtime = api.get_space_runtime(repo_id)
     stage = str(getattr(runtime.stage, "value", runtime.stage))
@@ -106,8 +121,13 @@ for _ in range(180):
         last_stage = stage
     up_to_date = new_revision is None or revision is None or revision == new_revision
     if stage == "RUNNING" and up_to_date:
-        print(f"Done! Open https://huggingface.co/spaces/{repo_id}")
-        sys.exit(0)
+        live = live_version()
+        if live == VERSION:
+            print(f"Done! The live app reports version {VERSION}. Open https://huggingface.co/spaces/{repo_id}")
+            sys.exit(0)
+        if live != last_live:
+            print(f"  Live app answers version: {live} (waiting for {VERSION})")
+            last_live = live
     if "ERROR" in stage:
         print(f"::error::The Space failed ({stage}): {(runtime.raw or {}).get('errorMessage', '')}")
         print_logs("build")

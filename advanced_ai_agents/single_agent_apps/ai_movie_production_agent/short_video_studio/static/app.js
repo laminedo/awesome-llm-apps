@@ -459,6 +459,7 @@ async function init() {
     serverHasKey = config.server_has_key;
     serverKeyHint = config.server_key_hint || "";
     talkingReady = config.talking_ready !== false;
+    $("#appVersion").textContent = `App version: ${config.version || "unknown"}`;
     $("#talkTokenNote").hidden = talkingReady;
     outputMaxAgeHours = config.output_max_age_hours || 0;
   } catch {
