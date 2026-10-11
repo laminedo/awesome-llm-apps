@@ -62,24 +62,57 @@ operations += [CommitOperationDelete(path_in_repo=name)
                for name in sorted(remote_files - set(local_files) - {".gitattributes"})]
 
 sha = os.getenv("GITHUB_SHA", "local")[:7]
-api.create_commit(repo_id, operations, repo_type="space", commit_message=f"Deploy from GitHub {sha}")
+info = api.create_commit(repo_id, operations, repo_type="space", commit_message=f"Deploy from GitHub {sha}")
+new_revision = getattr(info, "oid", None)  # None when nothing changed
 print("Files uploaded. Waiting for Hugging Face to build and start the app…")
 
-# Follow the build so problems show up here in GitHub (up to 20 minutes).
+# Follow the build so problems show up here in GitHub (up to 30 minutes).
+import json  # noqa: E402
 import time  # noqa: E402
+import urllib.request  # noqa: E402
 
+
+def print_logs(kind: str, seconds: int = 20) -> None:
+    """Print the last lines of the Space's build or run log."""
+    url = f"https://huggingface.co/api/spaces/{repo_id}/logs/{kind}"
+    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    lines, start = [], time.time()
+    try:
+        with urllib.request.urlopen(request, timeout=seconds) as response:
+            for raw in response:
+                if raw.startswith(b"data:"):
+                    try:
+                        lines.append(json.loads(raw[5:]).get("data", "").rstrip())
+                    except ValueError:
+                        pass
+                if time.time() - start > seconds:
+                    break
+    except Exception as error:  # noqa: BLE001 - the log stream ends with a timeout
+        lines.append(f"(log stream ended: {type(error).__name__})")
+    print(f"----- last {kind} log lines -----")
+    print("\n".join(lines[-60:]))
+
+
+first = api.get_space_runtime(repo_id)
+print(f"  New revision: {str(new_revision)[:7]}; Space runtime info: "
+      f"{ {k: v for k, v in (first.raw or {}).items() if k in ('stage', 'sha', 'errorMessage')} }")
 last_stage = None
-for _ in range(120):
+for _ in range(180):
     runtime = api.get_space_runtime(repo_id)
     stage = str(getattr(runtime.stage, "value", runtime.stage))
+    revision = (runtime.raw or {}).get("sha")
     if stage != last_stage:
-        print(f"  Space status: {stage}")
+        print(f"  Space status: {stage} (revision {str(revision)[:7]})")
         last_stage = stage
-    if stage == "RUNNING":
+    up_to_date = new_revision is None or revision is None or revision == new_revision
+    if stage == "RUNNING" and up_to_date:
         print(f"Done! Open https://huggingface.co/spaces/{repo_id}")
         sys.exit(0)
     if "ERROR" in stage:
-        print(f"::error::The Space failed to start ({stage}): {(runtime.raw or {}).get('errorMessage', '')}")
+        print(f"::error::The Space failed ({stage}): {(runtime.raw or {}).get('errorMessage', '')}")
+        print_logs("build")
+        print_logs("run")
         sys.exit(1)
     time.sleep(10)
-print(f"::warning::Still building after 20 minutes. Check https://huggingface.co/spaces/{repo_id}")
+print(f"::warning::Still not running the new version after 30 minutes. Check https://huggingface.co/spaces/{repo_id}")
+print_logs("build")
