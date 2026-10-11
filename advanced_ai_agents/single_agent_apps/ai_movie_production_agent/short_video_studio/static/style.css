@@ -153,7 +153,7 @@ select {
 .ratio.r169 { width: 16px; height: 10px; }
 
 /* Engine switch */
-.engine-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.engine-switch { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .engine {
   position: relative; text-align: left; border: 2px solid var(--line); border-radius: 18px;
   background: transparent; padding: 18px; cursor: pointer; transition: all .25s;
@@ -168,6 +168,12 @@ select {
   padding: 2px 10px; border-radius: 980px; color: #fff; background: var(--green);
 }
 .badge.paid { background: linear-gradient(135deg, #ff9f0a, #ff375f); }
+.badge.new { background: linear-gradient(135deg, #5e5ce6, #bf5af2); }
+.talk-options { margin-top: 20px; display: flex; flex-direction: column; gap: 16px; animation: rise .4s ease; }
+.upload-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.upload-btn { font-size: 15px; padding: 8px 18px; }
+.photo-preview { width: 64px; height: 64px; object-fit: cover; border-radius: 16px; box-shadow: var(--shadow); }
+.note.warn { color: var(--orange); }
 .veo-options { margin-top: 20px; animation: rise .4s ease; }
 
 /* iOS switch */

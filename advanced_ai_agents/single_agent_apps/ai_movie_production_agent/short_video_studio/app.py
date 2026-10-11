@@ -32,6 +32,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel, Field  # noqa: E402
 
 import google_client  # noqa: E402
+import talking  # noqa: E402
 import video_builder  # noqa: E402
 import visuals  # noqa: E402
 from script_writer import write_script  # noqa: E402
@@ -60,6 +61,7 @@ class ScriptRequest(BaseModel):
     duration: int = Field(default=30, ge=10, le=90)
     language: str = "English"
     engine: str = "free"
+    character: str = Field(default="", max_length=300)
 
 
 class Scene(BaseModel):
@@ -72,11 +74,15 @@ class VideoRequest(BaseModel):
     title: str = Field(default="My short video", max_length=120)
     scenes: list[Scene] = Field(min_length=1, max_length=12)
     format: str = "vertical"
-    engine: str = "free"  # "free" or "veo"
+    engine: str = "free"  # "free", "veo" or "talk"
     veo_quality: str = "fast"  # "fast" or "best"
     voice: str = "en-US-AndrewNeural"
     voice_speed: str = "Normal"
     subtitles: bool = True
+    # Talking character mode
+    character: str = Field(default="", max_length=300)  # e.g. "a chubby orange cat in sunglasses"
+    character_image: str = Field(default="", max_length=12_000_000)  # uploaded photo as a data: URL
+    voice_effect: str = "Normal"  # Normal / Baby / Chipmunk / Deep
 
 
 def key_hint(key: str) -> str:
@@ -123,10 +129,14 @@ def run_job(job_id: str, request: VideoRequest, api_key: str) -> None:
         voice_paths = []
         for i, scene in enumerate(scenes):
             step(f"Recording voiceover {i + 1} of {total}", 0.02 + 0.13 * i / total)
-            voice_paths.append(make_voiceover(
+            voice = make_voiceover(
                 scene.narration, request.voice, request.voice_speed, api_key,
                 os.path.join(work_dir, f"voice_{i}"), log,
-            ))
+            )
+            if voice and request.voice_effect in video_builder.VOICE_EFFECTS:
+                voice = video_builder.voice_effect(voice, request.voice_effect,
+                                                   os.path.join(work_dir, f"voice_{i}_fx.wav"))
+            voice_paths.append(voice)
 
         # 2) Visuals
         visual_paths: list[tuple[str, bool]] = [("", False)] * total
@@ -164,6 +174,9 @@ def run_job(job_id: str, request: VideoRequest, api_key: str) -> None:
             with ThreadPoolExecutor(max_workers=int(os.getenv("VEO_PARALLEL", "2"))) as pool:
                 for i, result in pool.map(film, range(total)):
                     visual_paths[i] = result
+        elif request.engine == "talk":
+            visual_paths = talking.make_talking_clips(
+                request, voice_paths, work_dir, width, height, step, log)
         else:
             for i, scene in enumerate(scenes):
                 step(f"Creating AI image {i + 1} of {total}", 0.15 + 0.45 * i / total)
@@ -180,6 +193,7 @@ def run_job(job_id: str, request: VideoRequest, api_key: str) -> None:
                 headline=scene.on_screen_text, narration=scene.narration,
                 show_subtitles=request.subtitles, width=width, height=height,
                 work_dir=work_dir, is_last=i == total - 1,
+                talking=request.engine == "talk" and is_video,
             ))
 
         # 4) Final export
@@ -224,6 +238,7 @@ def clean_old_outputs() -> None:
 def config():
     server_key = os.getenv("GOOGLE_API_KEY", "").strip()
     return {"server_has_key": bool(server_key), "server_key_hint": key_hint(server_key) if server_key else "",
+            "talking_ready": bool(os.getenv("HF_TOKEN")),
             "voices": VOICES, "output_max_age_hours": OUTPUT_MAX_AGE_HOURS}
 
 
@@ -232,7 +247,7 @@ def create_script(request: ScriptRequest, x_google_api_key: str | None = Header(
     api_key, source = resolve_key(x_google_api_key)
     try:
         return write_script(api_key, request.idea, request.style, request.platform,
-                            request.duration, request.language, request.engine)
+                            request.duration, request.language, request.engine, request.character)
     except Exception as error:  # noqa: BLE001
         traceback.print_exc()
         message = google_client.friendly_error(error, source, key_hint(api_key))
@@ -243,6 +258,8 @@ def create_script(request: ScriptRequest, x_google_api_key: str | None = Header(
 def create_video(request: VideoRequest, x_google_api_key: str | None = Header(default=None)):
     if request.format not in FORMATS:
         raise HTTPException(400, "Unknown format")
+    if request.engine == "talk" and not (request.character.strip() or request.character_image):
+        raise HTTPException(400, "Describe your character or upload a photo for the talking video.")
     api_key, _ = resolve_key(x_google_api_key)
     clean_old_outputs()
     job_id = uuid.uuid4().hex[:12]

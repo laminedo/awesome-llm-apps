@@ -29,4 +29,5 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          HF_GPU_TOKEN: ${{ secrets.HF_GPU_TOKEN }}
         run: python advanced_ai_agents/single_agent_apps/ai_movie_production_agent/short_video_studio/hf_space/deploy.py

@@ -12,64 +12,42 @@ jobs:
   probe:
     if: github.repository == 'laminedo/awesome-llm-apps'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -q huggingface_hub gradio_client edge-tts && sudo apt-get install -y -qq ffmpeg >/dev/null
-      - name: Real lip-sync test (baby + cat)
+      - name: Install the app
+        working-directory: advanced_ai_agents/single_agent_apps/ai_movie_production_agent/short_video_studio
+        run: pip install -q -r requirements.txt
+      - name: End-to-end talking videos with the real app code
+        working-directory: advanced_ai_agents/single_agent_apps/ai_movie_production_agent/short_video_studio
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          GOOGLE_API_KEY: fake-not-needed
         run: |
           python - <<'PY'
-          import os, time, base64, subprocess, urllib.request, urllib.parse, json, shutil
-          from gradio_client import Client, handle_file
-          os.makedirs("t", exist_ok=True)
-          def img(name, prompt):
-              url = "https://image.pollinations.ai/prompt/" + urllib.parse.quote(prompt) + "?width=576&height=1024&nologo=true&model=flux&seed=7"
-              for attempt in range(6):
-                  try:
-                      req = urllib.request.Request(url, headers={"User-Agent": "ShortVideoStudio/1.0"})
-                      with urllib.request.urlopen(req, timeout=120) as r, open(f"t/{name}.jpg", "wb") as f:
-                          f.write(r.read())
-                      print(f"IMG {name} ok on attempt {attempt+1}"); return f"t/{name}.jpg"
-                  except urllib.error.HTTPError as e:
-                      print(f"IMG {name} attempt {attempt+1}: HTTP {e.code} {e.read()[:200]!r}"); time.sleep(20 * (attempt + 1))
-                  except Exception as e:
-                      print(f"IMG {name} attempt {attempt+1}: {e}"); time.sleep(20 * (attempt + 1))
-          baby = None and img("baby", "photorealistic portrait photo of a cute smiling baby looking straight at the camera, face centered, soft light, plain background")
-          cat = img("cat", "photorealistic portrait photo of a cute orange cat looking straight at the camera, face centered, front view, plain background")
-          subprocess.run(["edge-tts", "--voice", "en-US-AnaNeural", "--text", "Hello! I am the boss of this house. Where is my lunch?", "--write-media", "t/voice.mp3"], check=True)
-          subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", "t/voice.mp3", "-ar", "16000", "-ac", "1", "t/voice.wav"], check=True)
-          def info(path):
-              r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration:stream=codec_type,width,height", "-of", "json", path], capture_output=True, text=True)
-              return r.stdout.replace("\n", " ")
-          def thumbs(path, tag):
-              for t in ("0.3", "1.5", "2.6"):
-                  out = f"t/{tag}_{t}.jpg"
-                  subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-ss", t, "-i", path, "-frames:v", "1", "-vf", "scale=96:-2", "-q:v", "12", out])
-                  if os.path.exists(out):
-                      print(f"THUMB {tag} {t} " + base64.b64encode(open(out, "rb").read()).decode())
-          print("voice:", info("t/voice.wav"))
-          if cat: thumbs_src = subprocess.run(["ffmpeg","-y","-loglevel","error","-i",cat,"-vf","scale=96:-2","-q:v","12","t/src.jpg"]); print("SRC " + base64.b64encode(open("t/src.jpg","rb").read()).decode())
-          tests = [
-            ("longcat", "victor/LongCat-Video-Avatar-1.5", lambda c, im: c.predict(handle_file(im), handle_file("t/voice.wav"),
-                 "A character is speaking expressively, looking at the camera.", "480p", 42, "Clean speech (fast)", "DBCache faster", api_name="/generate")),
-            ("moda", "multimodalart/MoDA-fast-talking-head", lambda c, im: c.predict(handle_file(im), handle_file("t/voice.wav"), "Happiness", 1.2, api_name="/generate_motion")),
-          ]
-          for tag, sid, call in tests:
-              try:
-                  c = Client(sid, token=os.environ["HF_TOKEN"], verbose=False)
-              except Exception as e:
-                  print(tag, "connect failed", e); continue
-              for kind, im in (("cat", cat),):
-                  t0 = time.time()
-                  try:
-                      res = call(c, im)
-                      path = res["video"] if isinstance(res, dict) else res
-                      print(f"RESULT {tag} {kind} OK in {time.time()-t0:.0f}s -> {info(path)}")
-                      thumbs(path, f"{tag}-{kind}")
-                  except Exception as e:
-                      print(f"RESULT {tag} {kind} FAILED in {time.time()-t0:.0f}s: {type(e).__name__}: {str(e)[:400]}")
+          import base64, os, time
+          import app, video_builder as vb
+          def run(job_id, character, effect, lines):
+              req = app.VideoRequest(title=job_id, engine="talk", character=character, voice="en-US-AnaNeural",
+                                     voice_effect=effect, scenes=[app.Scene(narration=l, on_screen_text=l[:20], visual_prompt=character) for l in lines])
+              app.JOBS[job_id] = {"id": job_id, "status": "running", "progress": 0, "step": "", "log": [], "warnings": [], "created": time.time()}
+              t0 = time.time()
+              app.run_job(job_id, req, "fake-not-needed")
+              j = app.JOBS[job_id]
+              print(f"\n===== {job_id}: {j['status']} in {time.time()-t0:.0f}s, duration={j.get('duration')} error={j.get('error')}")
+              print("LOG:", " | ".join(j["log"]))
+              print("WARNINGS:", j["warnings"])
+              if j["status"] == "done":
+                  out = os.path.join(app.OUTPUT_DIR, job_id, j["filename"])
+                  for t in ("0.5", "1.6", "2.7"):
+                      thumb = f"/tmp/{job_id}_{t}.jpg"
+                      vb.run_ffmpeg(["-ss", t, "-i", out, "-frames:v", "1", "-vf", "crop=iw:iw*1.1:0:ih*0.12,scale=96:-2", "-q:v", "12", thumb])
+                      print(f"THUMB {job_id} {t} " + base64.b64encode(open(thumb, "rb").read()).decode())
+          run("baby", "a cute chubby baby with big eyes", "Baby",
+              ["Listen to me. I am the boss of this house now.", "Where is my milk? I asked five minutes ago!"])
+          run("cat", "a fluffy orange cat", "Normal",
+              ["Human, you are late. My bowl has been empty for ten whole minutes."])
           PY

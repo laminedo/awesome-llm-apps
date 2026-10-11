@@ -42,6 +42,11 @@ if google_key:
     api.add_space_secret(repo_id, "GOOGLE_API_KEY", google_key)
     print("Saved GOOGLE_API_KEY as a hidden Space secret.")
 
+# Talking characters run on Hugging Face GPUs; this token counts the GPU time on your account.
+gpu_token = os.getenv("HF_GPU_TOKEN", "").strip() or token
+api.add_space_secret(repo_id, "HF_TOKEN", gpu_token)
+print("Saved HF_TOKEN (for talking characters) as a hidden Space secret.")
+
 # Upload all app files + the Space README, and remove files that no longer exist.
 local_files = {}
 for path in APP_DIR.rglob("*"):

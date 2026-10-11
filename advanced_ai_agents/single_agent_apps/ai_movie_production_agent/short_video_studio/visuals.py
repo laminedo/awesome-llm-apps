@@ -10,6 +10,7 @@ Two engines (you pick with the switch in the app):
 
 import os
 import random
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -32,6 +33,24 @@ VEO_MODELS = {
 VEO_RESOLUTION = os.getenv("VEO_RESOLUTION", "720p")
 
 IMAGE_STYLE = "cinematic, ultra detailed, dramatic lighting, shallow depth of field, 4k"
+
+# Pollinations lets anonymous users make about one picture every 15 seconds and
+# answers "402"/"429" when asked too fast. A free key from enter.pollinations.ai
+# (POLLINATIONS_TOKEN in .env) lifts that limit.
+POLLINATIONS_TOKEN = os.getenv("POLLINATIONS_TOKEN", "").strip()
+_MIN_GAP = 2 if POLLINATIONS_TOKEN else 16
+_last_request = 0.0
+_request_lock = threading.Lock()
+
+
+def _wait_turn() -> None:
+    """Space out picture requests so the free service doesn't refuse them."""
+    global _last_request
+    with _request_lock:
+        wait = _last_request + _MIN_GAP - time.time()
+        if wait > 0:
+            time.sleep(wait)
+        _last_request = time.time()
 
 # Pleasant color pairs for the fallback gradients.
 GRADIENTS = [
@@ -85,12 +104,16 @@ def free_image(prompt: str, width: int, height: int, index: int, out_path: str, 
     url = (
         "https://image.pollinations.ai/prompt/"
         + urllib.parse.quote(full_prompt)
-        + f"?width={req_w}&height={req_h}&nologo=true&model=flux&seed={random.randint(1, 10**6)}"
+        + f"?width={req_w}&height={req_h}&nologo=true&seed={random.randint(1, 10**6)}"
     )
+    headers = {"User-Agent": "ShortVideoStudio/1.0"}
+    if POLLINATIONS_TOKEN:
+        headers["Authorization"] = f"Bearer {POLLINATIONS_TOKEN}"
     raw_path = out_path + ".download"
     for attempt in range(3):
         try:
-            request = urllib.request.Request(url, headers={"User-Agent": "ShortVideoStudio/1.0"})
+            _wait_turn()
+            request = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(request, timeout=120) as response, open(raw_path, "wb") as file:
                 file.write(response.read())
             image = Image.open(raw_path)
@@ -98,9 +121,10 @@ def free_image(prompt: str, width: int, height: int, index: int, out_path: str, 
             os.remove(raw_path)
             return out_path
         except Exception as error:  # noqa: BLE001 - network hiccups / rate limits
-            log(f"Image service busy ({type(error).__name__}), attempt {attempt + 1}/3…")
+            code = getattr(error, "code", "")
+            log(f"Image service busy ({code or type(error).__name__}), attempt {attempt + 1}/3…")
             if attempt < 2:
-                time.sleep(8 * (attempt + 1))
+                time.sleep(10 * (attempt + 1))
 
     log("⚠️ The free image service could not be reached, so one scene uses a color gradient.")
     gradient_image(width, height, index).save(out_path, quality=95)

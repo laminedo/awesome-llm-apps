@@ -169,8 +169,13 @@ def build_scene(
     height: int,
     work_dir: str,
     is_last: bool,
+    talking: bool = False,
 ) -> str:
-    """Render one scene to an MP4 and return its path."""
+    """Render one scene to an MP4 and return its path.
+
+    talking=True: the clip is a talking-character video whose mouth follows the
+    voiceover, so it plays once (last frame held) and its own sound isn't mixed in.
+    """
     if voice_path:
         voice_duration, _ = media_info(voice_path)
     else:
@@ -181,7 +186,16 @@ def build_scene(
     filters: list[str] = []
 
     # Input 0: the picture or the video clip.
-    if visual_is_video:
+    if visual_is_video and talking:
+        inputs += ["-i", visual_path]
+        filters.append(  # whole character on top of a blurred, darker copy (nothing gets cut off)
+            f"[0:v]fps={FPS},tpad=stop_mode=clone:stop_duration={duration},split[c1][c2];"
+            f"[c1]scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height},"
+            f"boxblur=30:2,eq=brightness=-0.08[blur];"
+            f"[c2]scale={width}:{height}:force_original_aspect_ratio=decrease[fg];"
+            f"[blur][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[bg]"
+        )
+    elif visual_is_video:
         inputs += ["-stream_loop", "-1", "-i", visual_path]
         filters.append(
             f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
@@ -229,7 +243,7 @@ def build_scene(
 
     # Audio: voice, plus the Veo clip's own sound quietly underneath (if it has any).
     voice_audio = "[1:a]aresample=44100,aformat=channel_layouts=stereo,apad"
-    if visual_is_video and media_info(visual_path)[1]:
+    if visual_is_video and not talking and media_info(visual_path)[1]:
         filters.append(f"{voice_audio}[voice]")
         filters.append("[0:a]aresample=44100,aformat=channel_layouts=stereo,volume=0.22[sfx]")
         filters.append("[voice][sfx]amix=inputs=2:duration=first:normalize=0[aout]")
@@ -246,6 +260,30 @@ def build_scene(
         "-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2",
         out_path,
     ])
+    return out_path
+
+
+VOICE_EFFECTS = {  # pitch change, keeping the same speed
+    "Baby": 1.35,
+    "Chipmunk": 1.6,
+    "Deep": 0.8,
+}
+
+
+def voice_effect(voice_path: str, effect: str, out_path: str) -> str:
+    """Make a voice higher (baby / chipmunk) or deeper. Returns the new file path."""
+    factor = VOICE_EFFECTS.get(effect)
+    if not factor:
+        return voice_path
+    run_ffmpeg(["-i", voice_path, "-af",
+                f"aresample=44100,asetrate={int(44100 * factor)},aresample=44100,atempo={1 / factor:.4f}",
+                out_path])
+    return out_path
+
+
+def to_wav(path: str, out_path: str) -> str:
+    """Convert audio to a 16 kHz mono WAV (what talking-face models expect)."""
+    run_ffmpeg(["-i", path, "-ar", "16000", "-ac", "1", out_path])
     return out_path
 
 

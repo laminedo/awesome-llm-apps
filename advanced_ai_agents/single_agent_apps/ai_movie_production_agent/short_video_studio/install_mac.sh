@@ -6,7 +6,7 @@ set -e
 
 BRANCH="claude/hopeful-bohr-lm8k5a"
 BASE="https://raw.githubusercontent.com/laminedo/awesome-llm-apps/refs/heads/$BRANCH/advanced_ai_agents/single_agent_apps/ai_movie_production_agent/short_video_studio"
-FILES="app.py google_client.py script_writer.py voiceover.py visuals.py video_builder.py requirements.txt .env.example README.md static/index.html static/style.css static/app.js"
+FILES="app.py google_client.py lipsync.py talking.py script_writer.py voiceover.py visuals.py video_builder.py requirements.txt .env.example README.md static/index.html static/style.css static/app.js"
 APP_DIR="$HOME/ShortVideoStudio"
 LAUNCHER="$HOME/Desktop/Short Video Studio.command"
 PYTHON_PKG="https://www.python.org/ftp/python/3.13.1/python-3.13.1-macos11.pkg"
@@ -76,6 +76,22 @@ elif [ -n "$CURRENT" ]; then
   echo "Keeping your saved key."
 else
   echo "Skipped. You can paste it later in the app (⚙️ icon, top right)."
+fi
+
+# 4b) Optional: Hugging Face token for "Talking character" videos (GPU time on your account).
+if ! grep -q -E '^HF_TOKEN=.' .env 2>/dev/null; then
+  say "Optional: paste a Hugging Face token for talking-character videos (Enter to skip):"
+  echo "   (Get one at huggingface.co/settings/tokens → Create new token → Read.)"
+  read -r -s HFT < /dev/tty || HFT=""
+  echo
+  HFT=$(printf '%s' "$HFT" | sed $'s/\x1b\\[20[01]~//g' | tr -d '[:space:]')
+  if [ -n "$HFT" ]; then
+    printf "\nHF_TOKEN=%s\n" "$HFT" >> .env
+    chmod 600 .env
+    echo "Hugging Face token saved."
+  else
+    echo "Skipped. Talking characters will show a still picture until you add HF_TOKEN to $APP_DIR/.env"
+  fi
 fi
 
 # 5) Create a double-click launcher on the Desktop.

@@ -47,7 +47,12 @@ SCRIPT_SCHEMA = {
 
 
 def scene_count(duration_seconds: int, engine: str) -> int:
-    """How many scenes fit in the video. Veo clips are 8s long, so fewer scenes."""
+    """How many scenes fit in the video. Veo clips are 8s long, so fewer scenes.
+
+    Talking characters use longer lines and at most 6 scenes (each one is a GPU job).
+    """
+    if engine == "talk":
+        return max(2, min(6, round(duration_seconds / 8)))
     seconds_per_scene = 7 if engine == "veo" else 5
     return max(3, min(10, round(duration_seconds / seconds_per_scene)))
 
@@ -60,6 +65,7 @@ def write_script(
     duration_seconds: int,
     language: str,
     engine: str,
+    character: str = "",
 ) -> dict:
     """Ask Gemini for a complete short-video script and return it as a dict."""
     n_scenes = scene_count(duration_seconds, engine)
@@ -79,7 +85,7 @@ Rules:
 - Exactly {n_scenes} scenes.
 - Scene 1 must be a scroll-stopping HOOK (a bold question, surprising fact or promise).
 - The last scene ends with a short call to action (follow, like, comment, share...).
-- Each narration is spoken aloud: natural, conversational, at most {words_per_scene} words.
+- Each narration is spoken aloud: natural, conversational, at most {words_per_scene} words.{_talking_rules(engine, character)}
 - on_screen_text: 2 to 6 punchy words that summarise the scene (no emojis, no hashtags).
 - visual_prompt: ALWAYS in English, one vivid cinematic description of what we SEE
   (subject, setting, lighting, camera movement, mood). Never ask for text, letters,
@@ -105,6 +111,18 @@ Rules:
     if not script:
         raise RuntimeError("The AI's answer was incomplete. Please click the button again.")
     return script
+
+
+def _talking_rules(engine: str, character: str) -> str:
+    if engine != "talk":
+        return ""
+    who = character.strip() or "the character in the user's photo"
+    return f"""
+- TALKING CHARACTER VIDEO: the whole video is ONE character talking straight to the
+  camera: {who}. Every narration is a first-person line SPOKEN BY THIS CHARACTER, in
+  its own funny personality (e.g. a cat complaining about its human). Never describe
+  the character from the outside and never switch speakers.
+- visual_prompt: for every scene, repeat a short description of this same character."""
 
 
 def _parse(response) -> dict | None:

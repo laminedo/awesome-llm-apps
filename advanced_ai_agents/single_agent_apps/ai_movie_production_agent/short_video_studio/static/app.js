@@ -17,6 +17,7 @@ const state = {
   duration: "30",
   veo_quality: "fast",
   voice_speed: "Normal",
+  voice_effect: "Normal",
   engine: "free",
   ...storage.get("prefs", {}),
 };
@@ -32,6 +33,8 @@ function withSign(url) {
 let script = null;
 let serverHasKey = false;
 let serverKeyHint = "";
+let talkingReady = true;
+let characterPhoto = "";  // uploaded photo, shrunk, as a data: URL
 let outputMaxAgeHours = 0;
 
 // ---------- small helpers ----------
@@ -48,7 +51,8 @@ function savePrefs() {
   const old = storage.get("prefs", {});
   storage.set("prefs", {
     format: state.format, duration: state.duration, veo_quality: state.veo_quality,
-    voice_speed: state.voice_speed, engine: state.engine,
+    voice_speed: state.voice_speed, voice_effect: state.voice_effect, engine: state.engine,
+    character: $("#character").value,
     // keep the saved language/voice if the lists haven't loaded (e.g. server unreachable)
     style: $("#style").value, language: $("#language").value || old.language, voice: $("#voice").value || old.voice,
     subtitles: $("#subtitles").checked,
@@ -121,6 +125,7 @@ function needKey() {
 
 function sceneCount() {
   const seconds = Number(state.duration);
+  if (state.engine === "talk") return Math.max(2, Math.min(6, Math.round(seconds / 8)));
   return Math.max(3, Math.min(10, Math.round(seconds / (state.engine === "veo" ? 7 : 5))));
 }
 
@@ -146,6 +151,8 @@ function setupEngine() {
     state.engine = value;
     $$("#engineSwitch .engine").forEach((b) => b.classList.toggle("selected", b.dataset.value === value));
     $("#veoOptions").hidden = value !== "veo";
+    $("#talkOptions").hidden = value !== "talk";
+    $("#talkTokenNote").hidden = talkingReady;
     updateVeoNote();
   };
   $$("#engineSwitch .engine").forEach((btn) =>
@@ -177,6 +184,9 @@ function fillVoices(prefs) {
 async function writeScript(makeVideoRightAway = false) {
   const idea = $("#idea").value.trim();
   if (idea.length < 3) { toast("Describe your idea first ✍️"); $("#idea").focus(); return; }
+  if (state.engine === "talk" && !$("#character").value.trim() && !characterPhoto) {
+    toast("Describe your character or upload a photo 🐱"); $("#character").focus(); return;
+  }
   if (needKey()) return;
   showFormError("");
 
@@ -191,6 +201,7 @@ async function writeScript(makeVideoRightAway = false) {
       duration: Number(state.duration),
       language: $("#language").value,
       engine: state.engine,
+      character: state.engine === "talk" ? $("#character").value.trim() : "",
     });
     renderScript();
     if (makeVideoRightAway) await makeVideo();
@@ -201,6 +212,48 @@ async function writeScript(makeVideoRightAway = false) {
     btn.classList.remove("loading");
     ["#writeBtn", "#quickBtn", "#rewriteBtn"].forEach((id) => { $(id).disabled = false; });
   }
+}
+
+// Shrink an uploaded photo in the browser (max 1024px) so it uploads quickly.
+function readPhoto(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, 1024 / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(img.src);
+      resolve(canvas.toDataURL("image/jpeg", 0.9));
+    };
+    img.onerror = () => reject(new Error("This file is not a picture we can read."));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function setupCharacterPhoto() {
+  const prefs = storage.get("prefs", {});
+  if (prefs.character) $("#character").value = prefs.character;
+  $("#character").addEventListener("change", savePrefs);
+  $("#characterPhoto").addEventListener("change", async () => {
+    const file = $("#characterPhoto").files[0];
+    if (!file) return;
+    try {
+      characterPhoto = await readPhoto(file);
+      $("#photoPreview").src = characterPhoto;
+      $("#photoPreview").hidden = false;
+      $("#removePhoto").hidden = false;
+    } catch (error) {
+      toast(error.message);
+    }
+  });
+  $("#removePhoto").addEventListener("click", () => {
+    characterPhoto = "";
+    $("#characterPhoto").value = "";
+    $("#photoPreview").hidden = true;
+    $("#removePhoto").hidden = true;
+  });
 }
 
 // ---------- step 2: script editor ----------
@@ -281,6 +334,9 @@ async function makeVideo() {
       voice: $("#voice").value,
       voice_speed: state.voice_speed,
       subtitles: $("#subtitles").checked,
+      character: state.engine === "talk" ? $("#character").value.trim() : "",
+      character_image: state.engine === "talk" ? characterPhoto : "",
+      voice_effect: state.engine === "talk" ? state.voice_effect : "Normal",
     });
     pollJob(job_id);
   } catch (error) {
@@ -348,6 +404,7 @@ async function init() {
   if (typeof prefs.subtitles === "boolean") $("#subtitles").checked = prefs.subtitles;
   setupSegmented();
   setupEngine();
+  setupCharacterPhoto();
 
   // Buttons work straight away, even while the settings are still loading.
   $("#style").addEventListener("change", savePrefs);
@@ -401,6 +458,8 @@ async function init() {
     voices = config.voices;
     serverHasKey = config.server_has_key;
     serverKeyHint = config.server_key_hint || "";
+    talkingReady = config.talking_ready !== false;
+    $("#talkTokenNote").hidden = talkingReady;
     outputMaxAgeHours = config.output_max_age_hours || 0;
   } catch {
     toast("Can't reach the server. Is the app running?", 8000);

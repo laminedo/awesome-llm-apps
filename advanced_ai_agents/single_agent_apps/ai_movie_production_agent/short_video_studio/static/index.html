@@ -93,6 +93,37 @@
             <span class="engine-sub">Real AI-filmed clips by Google</span>
             <span class="badge paid">Paid</span>
           </button>
+          <button class="engine" data-value="talk">
+            <span class="engine-title">Talking character</span>
+            <span class="engine-sub">A baby, a cat, a grandpa… talks to the camera</span>
+            <span class="badge new">New</span>
+          </button>
+        </div>
+        <div class="talk-options" id="talkOptions" hidden>
+          <div class="field">
+            <label class="label" for="character">Your character</label>
+            <input id="character" type="text" maxlength="300"
+                   placeholder="e.g. a chubby orange cat wearing tiny sunglasses" />
+          </div>
+          <div class="upload-row">
+            <label class="btn secondary upload-btn" for="characterPhoto">Or upload a photo</label>
+            <input id="characterPhoto" type="file" accept="image/*" hidden />
+            <img id="photoPreview" class="photo-preview" alt="Your character photo" hidden />
+            <button type="button" class="scene-remove" id="removePhoto" hidden>Remove photo</button>
+          </div>
+          <div class="field">
+            <span class="label">Voice effect</span>
+            <div class="segmented" data-name="voice_effect">
+              <button data-value="Normal" class="selected">Normal</button>
+              <button data-value="Baby">Baby</button>
+              <button data-value="Chipmunk">Chipmunk</button>
+              <button data-value="Deep">Deep</button>
+            </div>
+          </div>
+          <p class="note">Works best with a clear, front-facing face. Animals are experimental.
+            Only use photos you have permission to use, and tick “AI-generated” when you post.</p>
+          <p class="note warn" id="talkTokenNote" hidden>The talking part needs a Hugging Face token
+            (HF_TOKEN) on the server. Without it, the character won't move its mouth.</p>
         </div>
         <div class="veo-options" id="veoOptions" hidden>
           <div class="field">
