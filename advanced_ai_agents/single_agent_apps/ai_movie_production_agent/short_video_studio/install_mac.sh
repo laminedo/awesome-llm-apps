@@ -35,6 +35,15 @@ echo "Using $("$PY" --version) at $PY"
 #    Files go to a temporary folder first, so a dropped connection can't break the app.
 say "Downloading Short Video Studio into $APP_DIR…"
 mkdir -p "$APP_DIR/static"
+# Ask GitHub for the exact latest version, so we never get an old cached copy.
+SHA=$(curl -fsSL "https://api.github.com/repos/laminedo/awesome-llm-apps/commits/$BRANCH" 2>/dev/null \
+      | grep -m1 '"sha"' | sed -E 's/.*"sha": *"([0-9a-f]{40})".*/\1/' || true)
+if printf '%s' "$SHA" | grep -qE '^[0-9a-f]{40}$'; then
+  BASE="https://raw.githubusercontent.com/laminedo/awesome-llm-apps/$SHA/advanced_ai_agents/single_agent_apps/ai_movie_production_agent/short_video_studio"
+  echo "Latest version: ${SHA:0:7}"
+else
+  SHA=""
+fi
 UPDATE_DIR="$APP_DIR/.update"
 rm -rf "$UPDATE_DIR" && mkdir -p "$UPDATE_DIR/static"
 for file in $FILES; do
@@ -44,6 +53,7 @@ for file in $FILES; do
   mv -f "$UPDATE_DIR/$file" "$APP_DIR/$file"
 done
 rm -rf "$UPDATE_DIR"
+if [ -n "$SHA" ]; then printf '%s' "${SHA:0:7}" > "$APP_DIR/version.txt"; else rm -f "$APP_DIR/version.txt"; fi
 
 # 3) Install / update the Python packages in a private environment.
 say "Installing the app (1–2 minutes the first time)…"
