@@ -1,0 +1,55 @@
+name: Inspect Space (temporary)
+on:
+  push:
+    branches: [claude/hopeful-bohr-lm8k5a]
+    paths: [".github/workflows/probe-space.yml"]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    if: github.repository == 'laminedo/awesome-llm-apps'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q huggingface_hub
+      - env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os, json, urllib.request
+          from huggingface_hub import HfApi, hf_hub_download
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          repo = api.whoami()["name"] + "/short-video-studio"
+          print("FILES:", api.list_repo_files(repo, repo_type="space"))
+          try:
+              p = hf_hub_download(repo, "version.txt", repo_type="space", token=os.environ["HF_TOKEN"])
+              print("version.txt in repo:", repr(open(p).read()))
+          except Exception as e:
+              print("no version.txt:", e)
+          info = api.space_info(repo)
+          print("host:", info.host, "| sha:", info.sha)
+          rt = api.get_space_runtime(repo)
+          print("runtime raw:", json.dumps(rt.raw)[:800])
+          for path in ("/api/config",):
+              req = urllib.request.Request(info.host + path, headers={"Authorization": "Bearer " + os.environ["HF_TOKEN"]})
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as r:
+                      body = r.read().decode()
+                      print(path, r.status, dict(r.headers).get("x-proxied-host"), body[:300].replace(os.environ["HF_TOKEN"], "***"))
+              except Exception as e:
+                  print(path, "ERROR", e)
+          req = urllib.request.Request(f"https://huggingface.co/api/spaces/{repo}/logs/run", headers={"Authorization": "Bearer " + os.environ["HF_TOKEN"]})
+          lines = []
+          try:
+              with urllib.request.urlopen(req, timeout=15) as r:
+                  for raw in r:
+                      if raw.startswith(b"data:"):
+                          try: lines.append(json.loads(raw[5:]).get("data", "").rstrip())
+                          except ValueError: pass
+          except Exception as e:
+              lines.append(f"(stream ended {type(e).__name__})")
+          print("RUN LOG:\n" + "\n".join(lines[-40:]))
+          PY
