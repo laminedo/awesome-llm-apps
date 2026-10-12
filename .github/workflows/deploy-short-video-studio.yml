@@ -1,11 +1,11 @@
 name: Deploy Short Video Studio to Hugging Face
 
+# Manual only (Actions tab -> Run workflow): the Docker Space needs Hugging Face PRO.
+# To deploy on every change again, add back:
+#   push:
+#     branches: [main]
+#     paths: ["advanced_ai_agents/single_agent_apps/ai_movie_production_agent/short_video_studio/**"]
 on:
-  push:
-    branches: [main, claude/hopeful-bohr-lm8k5a]
-    paths:
-      - "advanced_ai_agents/single_agent_apps/ai_movie_production_agent/short_video_studio/**"
-      - ".github/workflows/deploy-short-video-studio.yml"
   workflow_dispatch:
 
 permissions:

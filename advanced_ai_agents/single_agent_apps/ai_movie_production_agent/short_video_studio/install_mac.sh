@@ -88,9 +88,9 @@ else
   echo "Skipped. You can paste it later in the app (⚙️ icon, top right)."
 fi
 
-# 4b) Optional: Hugging Face token for "Talking character" videos (GPU time on your account).
+# 4b) Optional: Hugging Face token for talking characters and FLUX pictures (GPU time on your account).
 if ! grep -q -E '^HF_TOKEN=.' .env 2>/dev/null; then
-  say "Optional: paste a Hugging Face token for talking-character videos (Enter to skip):"
+  say "Optional: paste a Hugging Face token for talking characters and faster free pictures (Enter to skip):"
   echo "   (Get one at huggingface.co/settings/tokens → Create new token → Read.)"
   read -r -s HFT < /dev/tty || HFT=""
   echo
@@ -100,7 +100,7 @@ if ! grep -q -E '^HF_TOKEN=.' .env 2>/dev/null; then
     chmod 600 .env
     echo "Hugging Face token saved."
   else
-    echo "Skipped. Talking characters will show a still picture until you add HF_TOKEN to $APP_DIR/.env"
+    echo "Skipped. Talking characters will show a still picture (and free pictures are slower) until you add HF_TOKEN to $APP_DIR/.env"
   fi
 fi
 

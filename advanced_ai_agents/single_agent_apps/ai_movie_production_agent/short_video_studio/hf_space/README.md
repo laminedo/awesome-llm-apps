@@ -15,5 +15,5 @@ Type an idea and get a ready-to-post short video for Facebook Reels and YouTube 
 The app writes the script, records an AI voiceover and makes the video (free AI images
 or Google Veo clips).
 
-This Space is deployed automatically from GitHub. Edit the code there, not here.
+This Space is deployed from GitHub (Actions → Run workflow). Edit the code there, not here.
 Finished videos are deleted after 24 hours, so download them when they're ready.

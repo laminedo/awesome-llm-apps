@@ -1,18 +1,24 @@
 """Step 2 - The AI voiceover.
 
-Main voice engine: Microsoft Edge neural voices (free, no API key needed).
-Backup: Gemini text-to-speech (uses your Google API key).
-If both fail, the scene is simply silent so the video can still be made.
+Voices are tried in this order, the first that works is used:
+  1. Microsoft Edge neural voices (free, no key, the most natural).
+  2. Google Translate's voice via gTTS (free, no key, simpler: one voice per language).
+  3. Gemini text-to-speech (uses your Google API key; the free tier is tiny).
+If all fail, the scene is simply silent so the video can still be made.
 """
 
 import asyncio
 import os
+import threading
+import time
 import wave
 
 import edge_tts
 from google.genai import types
+from gtts import gTTS
 
 import google_client
+import video_builder
 
 # Backup voice models to try, newest first (set GEMINI_TTS_MODEL to force one).
 TTS_MODELS = google_client.env_models("GEMINI_TTS_MODEL", [
@@ -62,8 +68,50 @@ def _gemini_voice_for(edge_voice_id: str) -> str:
     return "Kore"
 
 
+# Microsoft sometimes refuses a computer ("403"), e.g. when it gets too many requests.
+# After a refusal we skip it for a while and go straight to the backup voice.
+EDGE_PAUSE_SECONDS = 15 * 60
+_edge_paused_until = 0.0
+_edge_lock = threading.Lock()
+
+
 async def _edge_tts(text: str, voice: str, rate: str, out_path: str) -> None:
     await edge_tts.Communicate(text, voice, rate=rate).save(out_path)
+
+
+def _edge(text: str, voice: str, rate: str, out_path: str) -> None:
+    global _edge_paused_until
+    if time.time() < _edge_paused_until:
+        raise RuntimeError("Microsoft voice paused after a refusal")
+    with _edge_lock:  # one request at a time, a second apart
+        try:
+            asyncio.run(_edge_tts(text, voice, rate, out_path))
+        except Exception as error:
+            if getattr(error, "status", None) == 403 or "403" in str(error):
+                _edge_paused_until = time.time() + EDGE_PAUSE_SECONDS
+            raise
+        finally:
+            time.sleep(1)
+    if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
+        raise RuntimeError("Microsoft voice returned no audio")
+
+
+# Edge voice prefix -> (gTTS language, Google domain giving the right accent).
+GTTS_ACCENTS = {
+    "en-US": ("en", "com"), "en-GB": ("en", "co.uk"), "fr-FR": ("fr", "fr"),
+    "es-ES": ("es", "es"), "es-MX": ("es", "com.mx"), "pt-BR": ("pt", "com.br"),
+    "de-DE": ("de", "de"), "ar-SA": ("ar", "com"), "ar-EG": ("ar", "com"),
+}
+# gTTS talks a little slowly, so even "Normal" is sped up a bit.
+GTTS_TEMPO = {"Slow": 0.95, "Normal": 1.12, "Fast": 1.25}
+
+
+def _gtts(text: str, voice: str, speed: str, out_path: str) -> None:
+    lang, tld = GTTS_ACCENTS.get(voice[:5], (voice[:2] or "en", "com"))
+    raw_path = out_path + ".raw.mp3"
+    gTTS(text, lang=lang, tld=tld).save(raw_path)
+    video_builder.run_ffmpeg(["-i", raw_path, "-af", f"atempo={GTTS_TEMPO.get(speed, 1.12)}", out_path])
+    os.remove(raw_path)
 
 
 def _gemini_tts(text: str, voice: str, api_key: str, out_path: str) -> None:
@@ -96,19 +144,34 @@ def _gemini_tts(text: str, voice: str, api_key: str, out_path: str) -> None:
         wav.writeframes(audio.data)
 
 
-def make_voiceover(text: str, voice: str, speed: str, api_key: str, out_base: str, log) -> str | None:
-    """Create the voice file for one scene. Returns its path, or None for silence."""
+def make_voiceover(text: str, voice: str, speed: str, api_key: str, out_base: str, log,
+                   notes: set | None = None) -> str | None:
+    """Create the voice file for one scene. Returns its path, or None for silence.
+
+    Pass the same "notes" set for every scene of a video so each warning shows only once.
+    """
     if not text.strip():
         return None  # nothing to say: a silent scene
+    notes = set() if notes is None else notes
     rate = {"Slow": "-10%", "Normal": "+0%", "Fast": "+12%"}.get(speed, "+0%")
 
     mp3_path = out_base + ".mp3"
     try:
-        asyncio.run(_edge_tts(text, voice, rate, mp3_path))
-        if os.path.exists(mp3_path) and os.path.getsize(mp3_path) > 0:
-            return mp3_path
+        _edge(text, voice, rate, mp3_path)
+        return mp3_path
     except Exception as error:  # noqa: BLE001 - any failure -> try the backup voice
-        log(f"Free voice unavailable ({type(error).__name__}), trying Gemini voice…")
+        log(f"Microsoft voice unavailable ({str(error)[:80] or type(error).__name__}), trying Google's free voice…")
+
+    gtts_path = out_base + ".gtts.mp3"
+    try:
+        _gtts(text, voice, speed, gtts_path)
+        if "gtts" not in notes:
+            notes.add("gtts")
+            log("⚠️ Microsoft's free voice was busy, so Google's free backup voice was used "
+                "(simpler, one voice per language). Try again later for the voice you picked.")
+        return gtts_path
+    except Exception as error:  # noqa: BLE001
+        log(f"Google's free voice unavailable ({type(error).__name__}), trying the Gemini voice…")
 
     wav_path = out_base + ".wav"
     try:

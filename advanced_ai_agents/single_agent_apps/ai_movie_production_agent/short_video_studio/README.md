@@ -5,9 +5,9 @@ An Apple-style web app that turns an idea into a **short video for Facebook Reel
 Type an idea, and the app:
 
 1. ✍️ **Writes the script.** Gemini writes a hook, scenes, on-screen headlines, a post caption and hashtags. You can edit everything.
-2. 🎙️ **Records an AI voiceover.** It uses free Microsoft Edge neural voices in six languages, with Gemini voices as a backup.
+2. 🎙️ **Records an AI voiceover.** It uses free Microsoft Edge neural voices in six languages. If Microsoft is busy, it switches to Google's free voice (gTTS), then to Gemini voices.
 3. 🎥 **Makes the visuals.** A switch lets you pick:
-   - **Free:** an AI image for each scene with a smooth "Ken Burns" zoom ($0).
+   - **Free:** an AI image for each scene with a smooth "Ken Burns" zoom ($0). Pictures come from FLUX on Hugging Face's free GPUs when `HF_TOKEN` is set (fast and reliable), otherwise from Pollinations.ai.
    - **Veo AI Video:** real AI-filmed clips from Google Veo (paid by Google, per second of video).
    - **Talking character:** a photo or AI character whose mouth moves along with the voice (see below).
 4. 🎞️ **Edits the video.** It adds big headlines and subtitles, then exports an MP4 in **9:16** (Reels/Shorts) or **16:9** (YouTube).
@@ -16,7 +16,7 @@ Type an idea, and the app:
 Upload a photo or describe a character (a baby, a cat, a grandpa…). The script is written in the character's own voice, and its mouth moves along with the voiceover. You can add a voice effect: **Baby**, **Chipmunk** or **Deep**.
 
 - The mouth animation runs on free GPU Spaces on Hugging Face. **MoDA** is fast and handles human faces. **LongCat-Video-Avatar 1.5** is slower but also works for animals.
-- It needs a Hugging Face token (`HF_TOKEN`) so the GPU time counts on your account; Hugging Face PRO gets more GPU time. The online version gets it automatically from the `HF_TOKEN` GitHub secret (or `HF_GPU_TOKEN`, if you set one). On a Mac, the installer asks for it.
+- It needs a Hugging Face token (`HF_TOKEN`) so the GPU time counts on your account. A free account works but gets a small amount of GPU time each day; Hugging Face PRO gets more. The online version gets it automatically from the `HF_TOKEN` GitHub secret (or `HF_GPU_TOKEN`, if you set one). On a Mac, the installer asks for it.
 - Animal videos use a lot of GPU time (about 1.5 minutes per 5 seconds of talking), so keep them at 15–30 seconds.
 - If the talking service is busy or fails, the video still gets made with the still picture, and a warning is shown.
 - Only use photos you have permission to use, and mark the videos as AI-generated when you post them.
@@ -49,10 +49,12 @@ Then open **http://127.0.0.1:8000** in your browser, click the ⚙️ icon (top 
 > Tip: to avoid pasting the key each time, copy `.env.example` to `.env` and put the key there.
 
 ### Private web version (Hugging Face)
-A GitHub Action (`.github/workflows/deploy-short-video-studio.yml`) uploads this folder to a **private** Hugging Face Space every time the code changes.
+A GitHub Action (`.github/workflows/deploy-short-video-studio.yml`) uploads this folder to a **private** Hugging Face Space. Docker Spaces need a **Hugging Face PRO** subscription.
 1. Create a Hugging Face **write** token at [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens).
 2. In your GitHub repo, go to **Settings → Secrets and variables → Actions** and add the secrets `HF_TOKEN` (your Hugging Face token) and `GOOGLE_API_KEY` (your Google key).
-3. Push a change. The app appears at `https://huggingface.co/spaces/<your-hf-username>/short-video-studio`.
+3. On GitHub, open **Actions → Deploy Short Video Studio to Hugging Face → Run workflow**. The app appears at `https://huggingface.co/spaces/<your-hf-username>/short-video-studio`.
+
+It runs only when you start it, so code updates don't fail when you have no PRO plan. To upload automatically on every change instead, add a `push:` trigger back to the workflow.
 
 Only you can open it while logged in to Hugging Face. Videos are deleted from the Space after 24 hours.
 

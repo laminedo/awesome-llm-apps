@@ -1,9 +1,10 @@
 """Step 3 - The visuals for each scene.
 
 Two engines (you pick with the switch in the app):
-  - "free": an AI image per scene from Pollinations.ai (free, no key), animated
-            later with a slow zoom. If the image service is busy, a smooth color
-            gradient is used instead so the video always gets made.
+  - "free": an AI image per scene, animated later with a slow zoom. Pictures come
+            from FLUX.1-schnell on Hugging Face's free GPUs (needs HF_TOKEN; fast and
+            reliable), else from Pollinations.ai (no key, but often busy). If both
+            fail, a smooth color gradient is used so the video always gets made.
   - "veo":  a real AI video clip per scene from Google Veo (paid, uses your
             Google API key).
 """
@@ -16,6 +17,7 @@ import urllib.parse
 import urllib.request
 
 from google.genai import types
+from gradio_client import Client
 
 import google_client
 from PIL import Image, ImageDraw, ImageFilter
@@ -51,6 +53,41 @@ def _wait_turn() -> None:
         if wait > 0:
             time.sleep(wait)
         _last_request = time.time()
+
+
+# FLUX.1-schnell on Hugging Face's free "ZeroGPU" computers: ~5 seconds a picture.
+# The GPU time is counted on the account of HF_TOKEN (free accounts get a small daily amount).
+FLUX_SPACE = os.getenv("FLUX_SPACE", "black-forest-labs/FLUX.1-schnell")
+FLUX_PAUSE_SECONDS = 10 * 60  # after a failure (e.g. daily GPU time used up), skip FLUX a while
+_flux_client = None
+_flux_paused_until = 0.0
+_flux_lock = threading.Lock()
+
+
+def _flux_image(prompt: str, req_w: int, req_h: int) -> str:
+    """Make a picture with FLUX on Hugging Face. Returns the downloaded file path."""
+    global _flux_client, _flux_paused_until
+    token = os.getenv("HF_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError("no HF_TOKEN")
+    if time.time() < _flux_paused_until:
+        raise RuntimeError("FLUX paused after an earlier failure")
+    with _flux_lock:
+        try:
+            if _flux_client is None:
+                _flux_client = Client(FLUX_SPACE, token=token, verbose=False)
+            # Arguments: prompt, seed, randomize seed, width, height, steps.
+            result = _flux_client.predict(prompt, 0, True, req_w, req_h, 4, api_name="/infer")
+        except Exception:
+            _flux_client = None
+            _flux_paused_until = time.time() + FLUX_PAUSE_SECONDS
+            raise
+    image = result[0] if isinstance(result, (list, tuple)) else result
+    if isinstance(image, dict):
+        image = image.get("path")
+    if not image or not os.path.exists(image):
+        raise RuntimeError("FLUX returned no picture")
+    return image
 
 # Pleasant color pairs for the fallback gradients.
 GRADIENTS = [
@@ -97,7 +134,7 @@ def gradient_image(width: int, height: int, index: int) -> Image.Image:
 
 
 def free_image(prompt: str, width: int, height: int, index: int, out_path: str, log) -> str:
-    """Download a free AI image for a scene (falls back to a gradient)."""
+    """Make a free AI image for a scene: FLUX, then Pollinations, then a gradient."""
     full_prompt = f"{prompt}, {IMAGE_STYLE}"
     # Ask for a smaller image (faster), we upscale it afterwards.
     req_w, req_h = (768, 1344) if height > width else (1344, 768)
@@ -109,6 +146,14 @@ def free_image(prompt: str, width: int, height: int, index: int, out_path: str, 
     headers = {"User-Agent": "ShortVideoStudio/1.0"}
     if POLLINATIONS_TOKEN:
         headers["Authorization"] = f"Bearer {POLLINATIONS_TOKEN}"
+    try:
+        cover_resize(Image.open(_flux_image(full_prompt, req_w, req_h)), width, height).save(out_path, quality=95)
+        return out_path
+    except Exception as error:  # noqa: BLE001 - use the next free picture service
+        if os.getenv("HF_TOKEN", "").strip() and "paused" not in str(error):
+            log(f"Hugging Face pictures unavailable ({str(error)[:120] or type(error).__name__}), "
+                "using Pollinations…")
+
     raw_path = out_path + ".download"
     for attempt in range(3):
         try:

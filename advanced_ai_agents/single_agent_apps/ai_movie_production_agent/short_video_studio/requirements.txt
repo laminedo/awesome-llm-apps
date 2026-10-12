@@ -9,3 +9,4 @@ certifi
 arabic-reshaper>=3.0
 python-bidi>=0.4
 gradio_client>=1.0
+gTTS>=2.5

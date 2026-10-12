@@ -132,11 +132,12 @@ def run_job(job_id: str, request: VideoRequest, api_key: str) -> None:
         os.makedirs(work_dir, exist_ok=True)
         # 1) Voiceovers
         voice_paths = []
+        voice_notes: set = set()  # so each voice warning shows only once per video
         for i, scene in enumerate(scenes):
             step(f"Recording voiceover {i + 1} of {total}", 0.02 + 0.13 * i / total)
             voice = make_voiceover(
                 scene.narration, request.voice, request.voice_speed, api_key,
-                os.path.join(work_dir, f"voice_{i}"), log,
+                os.path.join(work_dir, f"voice_{i}"), log, voice_notes,
             )
             if voice and request.voice_effect in video_builder.VOICE_EFFECTS:
                 voice = video_builder.voice_effect(voice, request.voice_effect,
