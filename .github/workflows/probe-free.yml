@@ -1,0 +1,58 @@
+name: Probe free backups (temporary)
+on:
+  push:
+    branches: [claude/hopeful-bohr-lm8k5a]
+    paths: [".github/workflows/probe-free.yml"]
+permissions:
+  contents: read
+jobs:
+  probe:
+    if: github.repository == 'laminedo/awesome-llm-apps'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q gradio_client gTTS edge-tts huggingface_hub
+      - env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          python - <<'PY'
+          import os, time, asyncio
+          from gtts import gTTS
+          for lang, tld in (("en","com"),("fr","fr"),("ar","com"),("pt","com.br"),("de","de"),("es","es")):
+              t0 = time.time()
+              try:
+                  gTTS("Bonjour, ceci est un test." if lang=="fr" else "Hello this is a test", lang=lang, tld=tld).save(f"/tmp/g_{lang}.mp3")
+                  print(f"gTTS {lang} OK {os.path.getsize(f'/tmp/g_{lang}.mp3')} bytes in {time.time()-t0:.1f}s")
+              except Exception as e:
+                  print(f"gTTS {lang} FAILED {type(e).__name__}: {e}")
+          import edge_tts
+          async def edge(i):
+              await edge_tts.Communicate(f"Scene number {i}, testing many quick requests.", "en-US-AndrewNeural").save(f"/tmp/e{i}.mp3")
+          ok = 0
+          for i in range(8):
+              try:
+                  asyncio.run(edge(i)); ok += 1
+              except Exception as e:
+                  print("edge fail", i, type(e).__name__, str(e)[:120])
+          print(f"edge-tts rapid: {ok}/8 ok")
+          from huggingface_hub import HfApi
+          from gradio_client import Client
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          for sid in ["black-forest-labs/FLUX.1-schnell", "multimodalart/FLUX.1-merged", "black-forest-labs/FLUX.1-dev", "stabilityai/stable-diffusion-3.5-large-turbo"]:
+              try:
+                  rt = api.get_space_runtime(sid); print(f"\n#### {sid}: {rt.stage} {rt.hardware}")
+                  c = Client(sid, token=os.environ["HF_TOKEN"], verbose=False)
+                  c.view_api(print_info=True)
+              except Exception as e:
+                  print(sid, "failed", type(e).__name__, str(e)[:200])
+          t0 = time.time()
+          try:
+              c = Client("black-forest-labs/FLUX.1-schnell", token=os.environ["HF_TOKEN"], verbose=False)
+              res = c.predict("a cute orange cat wearing sunglasses, cinematic photo", 0, True, 768, 1344, 4, api_name="/infer")
+              print("FLUX schnell result:", res, f"in {time.time()-t0:.0f}s")
+          except Exception as e:
+              print("FLUX call failed:", type(e).__name__, str(e)[:300])
+          PY
