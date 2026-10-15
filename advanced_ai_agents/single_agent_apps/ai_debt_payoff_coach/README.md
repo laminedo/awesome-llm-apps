@@ -4,18 +4,25 @@ A modern, no-install web app that helps you **pay off debt faster** and **track 
 
 ## Features
 
-- **Payoff planner**: add credit cards, loans and IRS balances, then compare **Avalanche** (highest rate first) vs **Snowball** (smallest balance first) vs paying only minimums.
-- **"Extra per month" slider** that instantly shows your new debt-free date and how much interest you save.
-- **Balance chart** month by month, plus the exact order to pay each debt and when each one hits $0.
-- **IRS-aware tips**: payment-plan guidance (penalty drops from 0.5% to 0.25%/month), 180-day short-term plans, and an estimated IRS rate you can edit.
-- **Expense tracker**: log purchases by card and category, set monthly budgets, and see what's over budget.
-- **Credit used** per card (balance vs limit) with score tips.
-- **AI coach chat** that knows your real numbers:
-  - When opened as a Claude artifact, it uses Claude automatically.
-  - When run locally, paste a free [Gemini API key](https://aistudio.google.com/apikey) in the AI coach tab.
-- **Rule-based coach notes** that work with no AI at all.
-- Light and dark mode, works on phones.
-- Data stays in your browser (or your private Claude storage when opened as an artifact). Use **Copy backup** to save a copy.
+- **Track every purchase**: log purchases by card and category (the category is guessed from the store name), edit them, record refunds, and search or filter by month, card or category.
+- **Import from your bank**: drop in the CSV file your bank lets you download. The app finds the date, description and amount columns, skips card payments, auto-categorizes each row and skips duplicates. You can export back to CSV at any time.
+- **Repeat charges**: subscriptions and bills that show up every month are found automatically, with your monthly and yearly total.
+- **Payoff planner**: compare **Avalanche** (highest rate first), **Snowball** (smallest balance first) and paying only minimums for credit cards, loans and IRS balances. An "extra per month" slider shows your new debt-free date and the interest you save.
+- **Payments and due dates**: log payments (your balance updates automatically), see bills due in the next 31 days, and track how much you've paid down on each debt.
+- **IRS help**: payment-plan guidance (the late-payment penalty drops from 0.5% to 0.25%/month), 180-day short-term plans, and an estimated IRS rate you can change.
+- **Budgets**: set monthly budgets, add your own categories, and see a 6-month spending trend and spending per card.
+- **AI coach** that knows your numbers: it uses Claude when opened as a claude.ai artifact, or a free [Gemini API key](https://aistudio.google.com/apikey) when run locally. Rule-based coach notes work with no AI at all.
+- Light and dark mode, with a phone-friendly bottom tab bar.
+
+## Security & privacy
+
+- The app never asks for bank logins, card numbers or SSNs.
+- CSV files are read on your device. Nothing is uploaded.
+- Data lives in your browser (local file), or privately in your Claude account (claude.ai artifact). Use **Save backup file** to keep a copy.
+- Everything you import (CSV files, backups, saved data) is validated, and everything shown on screen is escaped to block script injection.
+- `index.html` ships with a strict Content Security Policy: only the app's own script can run, and the app can only talk to Google Fonts and the Gemini API.
+- Exported CSV files are protected against spreadsheet formula injection.
+- Your Gemini key is kept only in your browser and sent only to Google, in a request header.
 
 ## How to run
 

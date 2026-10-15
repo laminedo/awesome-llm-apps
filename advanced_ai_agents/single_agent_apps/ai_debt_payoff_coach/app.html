@@ -565,7 +565,9 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
   const vDate = (s) => (typeof s === "string" && RE_DATE.test(s) ? s : null);
   const vNum = (v, lo, hi, dflt = 0) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt; };
   const vStr = (v, max) => String(v ?? "").replace(/[\u0000-\u001f\u007f]/g, " ").trim().slice(0, max);
-  const vId = (v) => (typeof v === "string" && RE_ID.test(v) ? v : uid());
+  const vId = (v) => (typeof v === "string" && RE_ID.test(v) && v !== "cash" ? v : uid());
+  const RESERVED = new Set(["__proto__", "constructor", "prototype"]);
+  const vCat = (v) => { const c = vStr(v, 30); return RESERVED.has(c) ? "" : c; };
   const MAX_PURCHASES = 50000;
 
   function toast(msg) {
@@ -628,13 +630,14 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
   // Accepts anything (old v1 backups, cloud docs, pasted text) and returns a clean, bounded state or null.
   function normalize(s) {
     if (!s || typeof s !== "object" || Array.isArray(s)) return null;
-    let cats = Array.isArray(s.categories) ? s.categories.map((c) => vStr(c, 30)).filter(Boolean) : DEFAULT_CATS.slice();
+    let cats = Array.isArray(s.categories) ? s.categories.map(vCat).filter(Boolean) : DEFAULT_CATS.slice();
     cats = Array.from(new Set(cats)).slice(0, 40);
     if (!cats.includes("Other")) cats.push("Other");
+    const seen = new Set();
     const debts = (Array.isArray(s.debts) ? s.debts : []).slice(0, 100).filter((x) => x && typeof x === "object").map((x) => {
       const balance = round2(vNum(x.balance, 0, 1e8));
       return {
-        id: vId(x.id), name: vStr(x.name, 60) || "Debt",
+        id: (() => { let id = vId(x.id); while (seen.has(id)) id = uid(); seen.add(id); return id; })(), name: vStr(x.name, 60) || "Debt",
         type: ["card", "irs", "loan"].includes(x.type) ? x.type : "card",
         balance, startBalance: round2(vNum(x.startBalance, 0, 1e8, balance)) || balance,
         apr: vNum(x.apr, 0, 100), min: round2(vNum(x.min, 0, 1e7)), limit: round2(vNum(x.limit, 0, 1e8)),
@@ -657,7 +660,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
       const date = vDate(x.date); const amount = round2(vNum(x.amount, 0, 1e8));
       if (date && amount > 0 && debtIds.has(x.debtId)) payments.push({ id: vId(x.id), debtId: x.debtId, date, amount });
     }
-    const budgets = {};
+    const budgets = Object.create(null);
     const srcBudgets = s.budgets && typeof s.budgets === "object" ? s.budgets : {};
     for (const c of cats) budgets[c] = round2(vNum(Object.prototype.hasOwnProperty.call(srcBudgets, c) ? srcBudgets[c] : 0, 0, 1e7));
     return {
@@ -1187,8 +1190,8 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
   });
   $("cat-form").addEventListener("submit", (e) => {
     e.preventDefault();
-    const name = vStr($("cat-name").value, 30);
-    if (!name) return;
+    const name = vCat($("cat-name").value);
+    if (!name) { toast("Pick a different category name"); return; }
     if (state.categories.some((c) => c.toLowerCase() === name.toLowerCase())) { toast("That category already exists"); return; }
     if (state.categories.length >= 40) { toast("You can have up to 40 categories"); return; }
     state.categories.splice(state.categories.length - 1, 0, name); state.budgets[name] = 0; $("cat-name").value = ""; commit(); toast("Added " + name);
@@ -1300,7 +1303,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
   drop.addEventListener("drop", (e) => { e.preventDefault(); drop.classList.remove("over"); readFile(e.dataTransfer.files[0]); });
 
   // Cells starting with = + - @ could run as formulas in Excel; prefix them so they stay plain text.
-  const csvCell = (v) => { let s = String(v ?? ""); if (/^[=+\-@\t\r]/.test(s)) s = "'" + s; return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const csvCell = (v) => { let s = String(v ?? ""); if (/^[=+\-@\t\r]/.test(s) && !/^-?\d+(\.\d+)?$/.test(s)) s = "'" + s; return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
   let downloader = null;
   async function offerFile(filename, text, mime) {
     if (downloader) { try { await downloader.save({ filename, data: text }); return; } catch (e) { if (!(e && e.code === "unavailable")) return; } }

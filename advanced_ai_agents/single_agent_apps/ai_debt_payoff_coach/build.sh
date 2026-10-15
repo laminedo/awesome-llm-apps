@@ -7,8 +7,9 @@ cd "$(dirname "$0")"
 HASH=$(python3 - <<'PY'
 import re, hashlib, base64
 src = open("app.html", encoding="utf-8").read()
+assert len(re.findall(r"<script\b", src)) == 1, "expected exactly one <script> tag"
 scripts = re.findall(r"<script>(.*?)</script>", src, re.S)
-assert len(scripts) == 1, "expected exactly one inline <script>"
+assert len(scripts) == 1, "the one <script> tag must be a plain inline <script>"
 print(base64.b64encode(hashlib.sha256(scripts[0].encode("utf-8")).digest()).decode())
 PY
 )
