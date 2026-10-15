@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-NyLTjSk/rARKI2bYTT/LbvDQrF2QVsyz4QYYbikjx4Q='; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data: blob:; connect-src https://srzcgfjhcgcqjakenqfj.supabase.co wss://srzcgfjhcgcqjakenqfj.supabase.co https://generativelanguage.googleapis.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-oFNqdJX62D4JZsrwkQ4b+uTVI16zhm5T86J1Uj0BOjs='; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data: blob:; connect-src https://srzcgfjhcgcqjakenqfj.supabase.co wss://srzcgfjhcgcqjakenqfj.supabase.co https://generativelanguage.googleapis.com; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="supabase-url" content="https://srzcgfjhcgcqjakenqfj.supabase.co">
 <meta name="supabase-key" content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNyemNnZmpoY2djcWpha2VucWZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIwNjQ4NzYsImV4cCI6MjEwNzY0MDg3Nn0.UFiDC4BUjwbzk_gXm2MdHxhVA_d1bONVh6MmbLh36GU">
@@ -724,11 +724,26 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
   let syncedMain = "";
   let saveTimer = null;
 
+  // "pending" remembers, across a refresh, that this device has changes the account hasn't confirmed yet.
+  const PENDING_KEY = LS_KEY + ":pending", OWNER_KEY = LS_KEY + ":owner";
+  const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+  const lsSet = (k, v) => { try { if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} };
+  const localWasSaved = !!lsGet(LS_KEY);
+  let saveSeq = 0;
+  // Called once an account is connected: returns true when this device's copy is newer and should be kept.
+  function claimOwner(owner) {
+    const keep = localWasSaved && !state.sample && lsGet(PENDING_KEY) === owner;
+    lsSet(OWNER_KEY, owner);
+    return keep;
+  }
   function setSync(cls, text) { const s = $("sync-status"); s.className = "sync " + cls; s.textContent = text; }
   const mainPart = () => { const { purchases, ...rest } = state; return rest; };
   const byMonth = () => { const m = {}; for (const p of state.purchases) (m[p.date.slice(0, 7)] ||= []).push(p); return m; };
 
-  function save() {
+  function save(changed = true) {
+    saveSeq++;
+    const owner = cloud ? cloud.owner : lsGet(OWNER_KEY);
+    if (changed && owner && !state.sample) lsSet(PENDING_KEY, owner);
     let localOk = true;
     try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch (e) { localOk = false; }
     if (!cloud) { setSync(localOk ? "ok" : "err", localOk ? "Saved in this browser" : "Couldn't save. Save a backup file"); return; }
@@ -737,6 +752,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
     saveTimer = setTimeout(pushCloud, 700);
   }
   async function pushCloud() {
+    const seq = saveSeq;
     try {
       const main = JSON.stringify(mainPart());
       if (main !== syncedMain) { await cloud.saveMain(main); syncedMain = main; }
@@ -746,6 +762,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
         if (synced[k] !== j) { await cloud.saveMonth(k, j); synced[k] = j; }
       }
       for (const k of Object.keys(synced)) if (!groups[k]) { await cloud.deleteMonth(k); delete synced[k]; }
+      if (seq === saveSeq) lsSet(PENDING_KEY, null);
       setSync("ok", "Saved to your account");
     } catch (e) {
       const full = e && e.code === "quota_exceeded";
@@ -968,7 +985,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
 
     const spentCat = sumBy(monthList, (e) => e.cat);
     $("spend-month-total").textContent = money(monthSpent, true);
-    $("overview-bars").innerHTML = barsHTML(Object.entries(spentCat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 7).map(([c, v]) => ({ label: c, value: v, cap: state.budgets[c] || 0, right: money(v) + (state.budgets[c] ? " / " + money(state.budgets[c]) : "") })), { empty: "No purchases logged this month." });
+    $("overview-bars").innerHTML = barsHTML(Object.entries(spentCat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 7).map(([c, v]) => ({ label: c, value: v, cap: state.budgets[c] || 0, right: money(v) + (state.budgets[c] ? " / " + money(state.budgets[c]) : "") })), { empty: state.purchases.length ? "No purchases yet this month. Your " + state.purchases.length + " earlier purchases are in the Purchases tab." : "No purchases logged this month." });
     $("util-bars").innerHTML = barsHTML(state.debts.filter((d) => d.type === "card").map((d) => d.limit > 0
       ? { label: d.name, value: d.balance, cap: d.limit, right: money(d.balance) + " of " + money(d.limit) + " · " + Math.round(d.balance / d.limit * 100) + "%" }
       : { label: d.name, value: d.balance, right: money(d.balance) + " · no limit set" }), { empty: "Add a credit card to see how much of each limit you're using." });
@@ -1000,7 +1017,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
     if (!$("p-date").value) $("p-date").value = ymd(new Date());
     const months = Array.from(new Set([thisMonth(), ...state.purchases.map((e) => e.date.slice(0, 7))])).sort().reverse();
     setOptions($("f-month"), '<option value="">All months</option>' + months.map((m) => `<option value="${m}">${ymLabel(m)}</option>`).join(""));
-    if (!monthFilterSet) { $("f-month").value = thisMonth(); monthFilterSet = true; }
+    if (!monthFilterSet) { $("f-month").value = ""; monthFilterSet = true; }
     $("p-apply").disabled = $("p-card").value === "cash";
 
     const rows = filteredPurchases();
@@ -1069,7 +1086,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
   function renderBudgets() {
     const months = Array.from(new Set([thisMonth(), ...state.purchases.map((e) => e.date.slice(0, 7))])).sort().reverse();
     setOptions($("b-month"), months.map((m) => `<option value="${m}">${ymLabel(m)}</option>`).join(""));
-    if (!$("b-month").value) $("b-month").value = thisMonth();
+    if (!$("b-month").value) $("b-month").value = months.find((m) => state.purchases.some((e) => e.date.startsWith(m))) || thisMonth();
     const key = $("b-month").value;
     const list = monthPurchases(key);
     const byCat = sumBy(list, (e) => e.cat);
@@ -1555,6 +1572,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
       const main = base.doc("main"), months = main.collection("purchases");
       setSync("busy", "Loading your account…");
       const snap = await main.get();
+      const keepLocal = claimOwner("claude:" + id);
       if (snap.exists) {
         const core = JSON.parse((snap.data() || {}).json || "null") || {};
         const ms = await months.get();
@@ -1565,23 +1583,24 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
           const arr = JSON.parse((doc.data() || {}).json || "[]");
           if (Array.isArray(arr)) purchases.push(...arr);
         }
-        const loaded = normalize({ ...core, purchases });
+        const loaded = keepLocal ? null : normalize({ ...core, purchases });
         if (loaded) {
           state = loaded;
           for (const [k, list] of Object.entries(byMonth())) synced[k] = JSON.stringify(list);
           syncedMain = JSON.stringify(mainPart());
         }
       } else {
-        const old = await base.doc("finance").get();   // data saved by the first version of this app
-        if (old.exists) { const loaded = normalize(JSON.parse((old.data() || {}).json || "null")); if (loaded) state = loaded; }
+        const old = keepLocal ? null : await base.doc("finance").get();   // data saved by the first version of this app
+        if (old && old.exists) { const loaded = normalize(JSON.parse((old.data() || {}).json || "null")); if (loaded) state = loaded; }
       }
       cloud = {
+        owner: "claude:" + id,
         saveMain: (json) => main.set({ json, savedAt: new Date().toISOString() }),
         saveMonth: (k, json) => months.doc(k).set({ json }),
         deleteMonth: (k) => months.doc(k).delete()
       };
       $("storage-note").textContent = "Your numbers are saved privately to your Claude account, so they follow you to any device where you're signed in. Only you can read them.";
-      if (!snap.exists && !state.sample) save(); else setSync("ok", "Saved to your account");
+      if ((!snap.exists || keepLocal) && !state.sample) save(); else setSync("ok", "Saved to your account");
       render();
     } catch (e) {
       setSync("err", "Account storage unavailable. Saving in this browser");
@@ -1622,7 +1641,10 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
         synced = {}; syncedMain = "";
         const purchases = [];
         for (const r of rows) { if (!RE_MONTH.test(r.month)) continue; synced[r.month] = null; if (Array.isArray(r.items)) purchases.push(...r.items); }
-        if (row) {
+        const keepLocal = claimOwner("sb:" + u.id);
+        if (keepLocal) {
+          toast("Saved your latest changes from this device");
+        } else if (row) {
           const loaded = normalize({ ...(row.state && typeof row.state === "object" ? row.state : {}), purchases });
           if (loaded) {
             if (!state.sample && (state.debts.length || state.purchases.length)) { try { localStorage.setItem(LS_KEY + ":before-sign-in", JSON.stringify(state)); } catch (e) {} }
@@ -1634,6 +1656,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
           state = emptyState();   // a brand-new account starts clean instead of uploading example numbers
         }
         cloud = {
+          owner: "sb:" + u.id,
           saveMain: async (json) => { check(await sb.from("user_state").upsert({ user_id: u.id, state: JSON.parse(json), updated_at: new Date().toISOString() })); },
           saveMonth: async (k, json) => { check(await sb.from("purchase_months").upsert({ user_id: u.id, month: k, items: JSON.parse(json), updated_at: new Date().toISOString() })); },
           deleteMonth: async (k) => { check(await sb.from("purchase_months").delete().eq("user_id", u.id).eq("month", k)); }
@@ -1654,6 +1677,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
         clearTimeout(saveTimer);
         state = emptyState();
         try { localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_KEY + ":before-sign-in"); } catch (e) {}
+        lsSet(PENDING_KEY, null); lsSet(OWNER_KEY, null);
         commit(); setSync("ok", "Signed out");
       }
       renderAccount();
@@ -1700,10 +1724,15 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
     renderAccount();
   }
 
+  const flushNow = () => { if (cloud && lsGet(PENDING_KEY)) { clearTimeout(saveTimer); pushCloud(); } };
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flushNow(); });
+  window.addEventListener("pagehide", flushNow);
+  window.addEventListener("beforeunload", (e) => { if (cloud && lsGet(PENDING_KEY) === cloud.owner) { flushNow(); e.preventDefault(); e.returnValue = ""; } });
+
   render();
   renderChat();
   updateAiStatus();
-  save();
+  save(false);
   connectViewer();
   connectSupabase();
 })();
