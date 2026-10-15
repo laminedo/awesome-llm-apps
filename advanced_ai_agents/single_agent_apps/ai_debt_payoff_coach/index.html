@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-oFNqdJX62D4JZsrwkQ4b+uTVI16zhm5T86J1Uj0BOjs='; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data: blob:; connect-src https://srzcgfjhcgcqjakenqfj.supabase.co wss://srzcgfjhcgcqjakenqfj.supabase.co https://generativelanguage.googleapis.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-L8JvuBOHZIpimLCgBRmcclJTWNuupd9TF/SCCQNTQ+Q='; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data: blob:; connect-src https://srzcgfjhcgcqjakenqfj.supabase.co wss://srzcgfjhcgcqjakenqfj.supabase.co https://generativelanguage.googleapis.com; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="supabase-url" content="https://srzcgfjhcgcqjakenqfj.supabase.co">
 <meta name="supabase-key" content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNyemNnZmpoY2djcWpha2VucWZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIwNjQ4NzYsImV4cCI6MjEwNzY0MDg3Nn0.UFiDC4BUjwbzk_gXm2MdHxhVA_d1bONVh6MmbLh36GU">
@@ -132,6 +132,8 @@ section.panel { display: grid; gap: 20px; }
 .list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .list li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; flex-wrap: wrap; }
 .list li .grow { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+.step-dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; flex: none; font: 700 .7rem var(--mono); color: var(--muted); }
+.step-dot.done { background: var(--good); border-color: var(--good); color: var(--surface); }
 .list .meta { font-size: .82rem; color: var(--muted); }
 
 .bars { display: grid; gap: 12px; }
@@ -279,10 +281,14 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
 
   <!-- OVERVIEW -->
   <section class="panel" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview">
+    <div class="card" id="setup-card" hidden>
+      <div class="card-head"><h2>Finish setting up</h2><span class="label" id="setup-count"></span></div>
+      <ul class="list" id="setup-steps"></ul>
+    </div>
     <div class="kpis">
       <div class="kpi hero"><span class="label">Debt-free by</span><span class="value" id="k-free">—</span><span class="sub" id="k-free-sub"></span></div>
       <div class="kpi"><span class="label">Total owed</span><span class="value" id="k-total">—</span><span class="sub" id="k-total-sub"></span></div>
-      <div class="kpi"><span class="label">Spent this month</span><span class="value" id="k-spent">—</span><span class="sub" id="k-spent-sub"></span></div>
+      <div class="kpi"><span class="label" id="k-spent-label">Spent this month</span><span class="value" id="k-spent">—</span><span class="sub" id="k-spent-sub"></span></div>
       <div class="kpi"><span class="label">Interest you'll save</span><span class="value" id="k-saved">—</span><span class="sub" id="k-saved-sub">vs. paying only minimums</span></div>
     </div>
     <div class="grid-2">
@@ -311,7 +317,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
     </div>
     <div class="grid-even">
       <div class="card">
-        <div class="card-head"><h2>This month by category</h2><span class="muted num" id="spend-month-total"></span></div>
+        <div class="card-head"><h2 id="cat-title">This month by category</h2><span class="muted num" id="spend-month-total"></span></div>
         <div class="bars" id="overview-bars"></div>
       </div>
       <div class="card">
@@ -800,6 +806,8 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
 
   /* ---------- derived data ---------- */
   const thisMonth = () => ym(new Date());
+  // The month the Overview talks about: this month if it has purchases, otherwise the latest month that does.
+  const focusMonth = () => { const cur = thisMonth(); if (state.purchases.some((e) => e.date.startsWith(cur))) return cur; let best = ""; for (const e of state.purchases) { const k = e.date.slice(0, 7); if (k <= cur && k > best) best = k; } return best || cur; };
   const monthPurchases = (key) => state.purchases.filter((e) => e.date.slice(0, 7) === key);
   const sumBy = (arr, keyFn) => arr.reduce((m, e) => { const k = keyFn(e); m[k] = (m[k] || 0) + e.amount; return m; }, Object.create(null));
   const debtById = (id) => state.debts.find((d) => d.id === id);
@@ -859,9 +867,14 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
     const util = cards.reduce((s, d) => s + d.balance, 0) / (cards.reduce((s, d) => s + d.limit, 0) || 1);
     if (cards.length && util > 0.3) tips.push({ kind: "warn", t: "Your cards are " + Math.round(util * 100) + "% used", d: "Credit scores usually improve once you're under 30% of your total limits. Your plan gets you there as balances fall." });
 
-    const spent = sumBy(monthPurchases(thisMonth()), (e) => e.cat);
+    const fm = focusMonth(), fmLabel = fm === thisMonth() ? "this month" : "in " + ymLabel(fm);
+    const spent = sumBy(monthPurchases(fm), (e) => e.cat);
+    const top = Object.entries(spent).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1])[0];
+    const budgetsSet = Object.values(state.budgets).some((v) => v > 0);
+    if (top) tips.push({ kind: "", t: "Your biggest spending " + fmLabel + ": " + top[0], d: "You spent " + money(top[1]) + " on " + top[0] + ". Cutting it by 20% would free about " + money(top[1] * 0.2) + " a month for debt." });
+    if (state.purchases.length && !budgetsSet) tips.push({ kind: "warn", t: "Set monthly budgets", d: "Add a budget for each category in the Budgets tab. The coach will then warn you when you go over." });
     const over = Object.entries(spent).filter(([c, v]) => state.budgets[c] > 0 && v > state.budgets[c]).sort((a, b) => (b[1] - state.budgets[b[0]]) - (a[1] - state.budgets[a[0]]));
-    for (const [c, v] of over.slice(0, 2)) tips.push({ kind: "bad", t: c + " is over budget", d: "You've spent " + money(v) + " of " + money(state.budgets[c]) + " this month. Pausing it for the rest of the month frees about " + money(v - state.budgets[c]) + " for debt." });
+    for (const [c, v] of over.slice(0, 2)) tips.push({ kind: "bad", t: c + " is over budget", d: "You've spent " + money(v) + " of " + money(state.budgets[c]) + " " + fmLabel + ". Pausing it for the rest of the month frees about " + money(v - state.budgets[c]) + " for debt." });
     const subs = recurring().filter((r) => r.cat === "Subscriptions");
     if (subs.length >= 2) { const tot = subs.reduce((s, r) => s + r.amount, 0); tips.push({ kind: "warn", t: "You pay " + money(tot, true) + "/month in subscriptions", d: "Cancelling even one (" + subs.map((r) => r.name).slice(0, 3).join(", ") + ") sends that money straight to your debt." }); }
 
@@ -956,12 +969,15 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
     const total = debts.reduce((s, d) => s + d.balance, 0);
     $("sample-banner").hidden = !state.sample;
 
-    $("k-free").textContent = !debts.length ? (state.debts.length ? "Now 🎉" : "—") : plan.finished ? monthLabel(plan.months) : "Not yet";
-    $("k-free-sub").textContent = !debts.length ? (state.debts.length ? "Everything is paid off" : "Add a debt to start") : plan.finished ? fmtMonths(plan.months) + " from now · " + (state.strategy === "avalanche" ? "Avalanche" : "Snowball") : "Payments don't cover interest";
+    $("k-free").textContent = !debts.length ? (state.debts.length ? "Now 🎉" : "Add debts") : plan.finished ? monthLabel(plan.months) : "Not yet";
+    $("k-free-sub").textContent = !debts.length ? (state.debts.length ? "Everything is paid off" : "Add your cards and IRS balance in Debts") : plan.finished ? fmtMonths(plan.months) + " from now · " + (state.strategy === "avalanche" ? "Avalanche" : "Snowball") : "Payments don't cover interest";
     $("k-total").textContent = money(total);
     const paidDown = state.debts.reduce((s, d) => s + Math.max(0, d.startBalance - d.balance), 0);
     $("k-total-sub").textContent = debts.length + " debt" + (debts.length === 1 ? "" : "s") + (paidDown > 0 ? " · " + money(paidDown) + " paid down" : "");
-    const monthList = monthPurchases(thisMonth());
+    const fm = focusMonth(), isCur = fm === thisMonth();
+    const monthList = monthPurchases(fm);
+    $("k-spent-label").textContent = isCur ? "Spent this month" : "Spent in " + ymLabel(fm);
+    $("cat-title").textContent = isCur ? "This month by category" : ymLabel(fm) + " by category";
     const monthSpent = monthList.reduce((s, e) => s + e.amount, 0);
     const budgetTotal = Object.values(state.budgets).reduce((a, b) => a + b, 0);
     $("k-spent").textContent = money(monthSpent);
@@ -985,7 +1001,19 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
 
     const spentCat = sumBy(monthList, (e) => e.cat);
     $("spend-month-total").textContent = money(monthSpent, true);
-    $("overview-bars").innerHTML = barsHTML(Object.entries(spentCat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 7).map(([c, v]) => ({ label: c, value: v, cap: state.budgets[c] || 0, right: money(v) + (state.budgets[c] ? " / " + money(state.budgets[c]) : "") })), { empty: state.purchases.length ? "No purchases yet this month. Your " + state.purchases.length + " earlier purchases are in the Purchases tab." : "No purchases logged this month." });
+    $("overview-bars").innerHTML = barsHTML(Object.entries(spentCat).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]).slice(0, 7).map(([c, v]) => ({ label: c, value: v, cap: state.budgets[c] || 0, right: money(v) + (state.budgets[c] ? " / " + money(state.budgets[c]) : "") })), { empty: "No purchases logged yet. Add one or import a statement in Purchases." });
+
+    // Setup checklist until the basics are in place.
+    const steps = [
+      { done: state.debts.length > 0, t: "Add your debts", d: "Credit cards, loans and your IRS balance, so the app can build your payoff plan.", tab: "debts", btn: "Add debts" },
+      { done: state.purchases.length > 0, t: "Add your purchases", d: "Import a CSV or PDF statement, or log purchases one by one.", tab: "purchases", btn: "Import" },
+      { done: Object.values(state.budgets).some((v) => v > 0), t: "Set monthly budgets", d: "So the coach can warn you before you overspend.", tab: "budgets", btn: "Set budgets" },
+      { done: state.debts.some((d) => d.dueDay), t: "Add due dates", d: "Get reminders on this page before each bill is due.", tab: "debts", btn: "Add dates" }
+    ];
+    const doneCount = steps.filter((x) => x.done).length;
+    $("setup-card").hidden = state.sample || doneCount === steps.length;
+    $("setup-count").textContent = doneCount + " of " + steps.length + " done";
+    $("setup-steps").innerHTML = steps.map((x, i) => `<li><span class="step-dot ${x.done ? "done" : ""}" aria-hidden="true">${x.done ? "✓" : i + 1}</span><div class="grow"><div style="font-weight:600">${esc(x.t)}</div><div class="meta">${esc(x.d)}</div></div>${x.done ? '<span class="chip good">Done</span>' : `<button class="btn small" data-goto="${x.tab}">${esc(x.btn)}</button>`}</li>`).join("");
     $("util-bars").innerHTML = barsHTML(state.debts.filter((d) => d.type === "card").map((d) => d.limit > 0
       ? { label: d.name, value: d.balance, cap: d.limit, right: money(d.balance) + " of " + money(d.limit) + " · " + Math.round(d.balance / d.limit * 100) + "%" }
       : { label: d.name, value: d.balance, right: money(d.balance) + " · no limit set" }), { empty: "Add a credit card to see how much of each limit you're using." });
@@ -1229,6 +1257,12 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
     const x = state.payments.find((p) => p.id === b.dataset.delPay); if (!x) return;
     const d = debtById(x.debtId); if (d) d.balance = round2(d.balance + x.amount);
     state.payments = state.payments.filter((p) => p.id !== x.id); commit(); toast("Payment removed and balance restored");
+  });
+  $("setup-steps").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-goto]"); if (!b || !TABS.includes(b.dataset.goto)) return;
+    showTab(b.dataset.goto);
+    if (b.dataset.goto === "debts") openDebtForm();
+    if (b.dataset.goto === "purchases") { $("import-card").hidden = false; }
   });
   $("upcoming").addEventListener("click", (e) => {
     const b = e.target.closest("[data-quickpay]"); if (!b) return;
