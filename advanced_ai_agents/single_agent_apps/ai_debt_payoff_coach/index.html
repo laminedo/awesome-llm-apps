@@ -3,8 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-eSzS6BO8neaduh1H75i6S4LiOKTfvJykMPyl7pEzyQQ='; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data: blob:; connect-src https://generativelanguage.googleapis.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-0SJZD8vlXB9xWi82Owdgdyn1pWaNlW0vZV//8s2SpbQ='; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data: blob:; connect-src https://srzcgfjhcgcqjakenqfj.supabase.co wss://srzcgfjhcgcqjakenqfj.supabase.co https://generativelanguage.googleapis.com; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
+<meta name="supabase-url" content="https://srzcgfjhcgcqjakenqfj.supabase.co">
+<meta name="supabase-key" content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNyemNnZmpoY2djcWpha2VucWZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIwNjQ4NzYsImV4cCI6MjEwNzY0MDg3Nn0.UFiDC4BUjwbzk_gXm2MdHxhVA_d1bONVh6MmbLh36GU">
+<script src="vendor/supabase-js-2.45.4.js"></script>
 </head>
 <body>
 <title>Debt Payoff Coach</title>
@@ -86,6 +89,7 @@ section.panel { display: grid; gap: 20px; }
 
 .banner { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-radius: var(--radius); background: var(--warn-soft); color: var(--fg); border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent); }
 .banner p { margin: 0; flex: 1 1 260px; }
+.banner.info { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
 
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 20px; min-width: 0; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
@@ -266,6 +270,10 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
   <div class="banner" id="sample-banner" hidden>
     <p><b>You're looking at example numbers.</b> Replace them with your own cards, loans, IRS balance and purchases to get your real plan.</p>
     <button class="btn" id="btn-clear-sample">Start with my own numbers</button>
+  </div>
+  <div class="banner info" id="signin-banner" hidden>
+    <p><b>Keep your numbers safe.</b> Sign in to save them to your account and use them on any device.</p>
+    <button class="btn" id="btn-go-signin">Sign in</button>
   </div>
 
   <!-- OVERVIEW -->
@@ -500,6 +508,32 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
 
   <!-- DATA & SECURITY -->
   <section class="panel" id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" hidden>
+    <div class="card" id="account-card" hidden>
+      <div class="card-head"><h2>Your account</h2><span class="chip" id="acct-chip">Not signed in</span></div>
+      <div id="acct-out">
+        <p class="muted" style="margin-top:0">Sign in to save your numbers to the cloud and use them on your phone and computer. Only you can see them.</p>
+        <div class="seg" role="group" aria-label="Sign in or create an account">
+          <button id="acct-mode-in" type="button" aria-pressed="true">Sign in</button>
+          <button id="acct-mode-up" type="button" aria-pressed="false">Create account</button>
+        </div>
+        <form class="inline" id="acct-form" style="margin-top:12px">
+          <div class="field"><label for="acct-email">Email</label><input id="acct-email" type="email" required maxlength="200" autocomplete="email"></div>
+          <div class="field"><label for="acct-pass">Password (8+ characters)</label><input id="acct-pass" type="password" required minlength="8" maxlength="200" autocomplete="current-password"></div>
+          <div class="field"><button class="btn primary" type="submit" id="acct-submit">Sign in</button></div>
+        </form>
+        <div class="btn-row" style="margin-top:8px"><button class="btn small" id="acct-forgot" type="button">Forgot password?</button></div>
+      </div>
+      <div id="acct-in" hidden>
+        <p style="margin-top:0">Signed in as <b id="acct-who"></b>. Changes save to your account automatically.</p>
+        <div class="btn-row"><button class="btn" id="acct-signout" type="button">Sign out</button></div>
+        <p class="hint" style="margin-top:8px">Signing out removes your numbers from this device. They stay safe in your account.</p>
+      </div>
+      <form class="inline" id="acct-reset" hidden style="margin-top:12px">
+        <div class="field"><label for="acct-newpass">New password (8+ characters)</label><input id="acct-newpass" type="password" required minlength="8" maxlength="200" autocomplete="new-password"></div>
+        <div class="field"><button class="btn primary" type="submit">Save new password</button></div>
+      </form>
+      <p class="hint" id="acct-msg" role="status" style="margin-top:8px"></p>
+    </div>
     <div class="grid-even">
       <div class="card">
         <div class="card-head"><h2>Where your data lives</h2></div>
@@ -684,7 +718,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
   try { state = normalize(JSON.parse(localStorage.getItem(LS_KEY))); } catch (e) { state = null; }
   if (!state) state = sampleState();
 
-  let cloud = null;       // { main, months } once the claude.ai viewer gives us private account storage
+  let cloud = null;       // { saveMain, saveMonth, deleteMonth } once private account storage (claude.ai or Supabase) is available
   let synced = {};        // month key -> JSON last written, so only changed months are rewritten
   let syncedMain = "";
   let saveTimer = null;
@@ -704,13 +738,13 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
   async function pushCloud() {
     try {
       const main = JSON.stringify(mainPart());
-      if (main !== syncedMain) { await cloud.main.set({ json: main, savedAt: new Date().toISOString() }); syncedMain = main; }
+      if (main !== syncedMain) { await cloud.saveMain(main); syncedMain = main; }
       const groups = byMonth();
       for (const [k, list] of Object.entries(groups)) {
         const j = JSON.stringify(list);
-        if (synced[k] !== j) { await cloud.months.doc(k).set({ json: j }); synced[k] = j; }
+        if (synced[k] !== j) { await cloud.saveMonth(k, j); synced[k] = j; }
       }
-      for (const k of Object.keys(synced)) if (!groups[k]) { await cloud.months.doc(k).delete(); delete synced[k]; }
+      for (const k of Object.keys(synced)) if (!groups[k]) { await cloud.deleteMonth(k); delete synced[k]; }
       setSync("ok", "Saved to your account");
     } catch (e) {
       const full = e && e.code === "quota_exceeded";
@@ -1459,7 +1493,11 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
         const old = await base.doc("finance").get();   // data saved by the first version of this app
         if (old.exists) { const loaded = normalize(JSON.parse((old.data() || {}).json || "null")); if (loaded) state = loaded; }
       }
-      cloud = { main, months };
+      cloud = {
+        saveMain: (json) => main.set({ json, savedAt: new Date().toISOString() }),
+        saveMonth: (k, json) => months.doc(k).set({ json }),
+        deleteMonth: (k) => months.doc(k).delete()
+      };
       $("storage-note").textContent = "Your numbers are saved privately to your Claude account, so they follow you to any device where you're signed in. Only you can read them.";
       if (!snap.exists && !state.sample) save(); else setSync("ok", "Saved to your account");
       render();
@@ -1468,11 +1506,124 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
     }
   }
 
+  /* ---------- hosted website: Supabase sign-in and cloud sync ---------- */
+  // index.html carries the project URL and public key in <meta> tags; row-level security keeps each person's rows private.
+  function connectSupabase() {
+    const meta = (n) => (document.querySelector(`meta[name="${n}"]`) || {}).content || "";
+    const url = meta("supabase-url"), key = meta("supabase-key");
+    if (window.claude || !window.supabase || !/^https:\/\/[a-z0-9]{20}\.supabase\.co$/.test(url) || !key) return;
+    const sb = window.supabase.createClient(url, key, { auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+    const here = location.origin + location.pathname;
+    let user = null, mode = "in";
+    const msg = (t) => { $("acct-msg").textContent = t; };
+    const check = (r) => { if (r.error) throw r.error; return r.data; };
+    $("account-card").hidden = false;
+
+    function renderAccount() {
+      $("acct-out").hidden = !!user; $("acct-in").hidden = !user;
+      $("acct-who").textContent = user ? user.email || "you" : "";
+      $("acct-chip").textContent = user ? "Signed in" : "Not signed in";
+      $("acct-chip").className = "chip " + (user ? "good" : "warn");
+      $("signin-banner").hidden = !!user;
+      $("acct-mode-in").setAttribute("aria-pressed", String(mode === "in"));
+      $("acct-mode-up").setAttribute("aria-pressed", String(mode === "up"));
+      $("acct-submit").textContent = mode === "in" ? "Sign in" : "Create account";
+      $("acct-pass").autocomplete = mode === "in" ? "current-password" : "new-password";
+      $("storage-note").textContent = user ? "Your numbers are saved to your private account, so they follow you to any device where you sign in. Only you can read them." : "Your numbers are saved in this browser on this device. Sign in to keep them in your account.";
+    }
+
+    async function load(u) {
+      setSync("busy", "Loading your account…");
+      try {
+        const row = check(await sb.from("user_state").select("state").eq("user_id", u.id).maybeSingle());
+        const rows = check(await sb.from("purchase_months").select("month, items").eq("user_id", u.id)) || [];
+        synced = {}; syncedMain = "";
+        const purchases = [];
+        for (const r of rows) { if (!RE_MONTH.test(r.month)) continue; synced[r.month] = null; if (Array.isArray(r.items)) purchases.push(...r.items); }
+        if (row) {
+          const loaded = normalize({ ...(row.state && typeof row.state === "object" ? row.state : {}), purchases });
+          if (loaded) {
+            if (!state.sample && (state.debts.length || state.purchases.length)) { try { localStorage.setItem(LS_KEY + ":before-sign-in", JSON.stringify(state)); } catch (e) {} }
+            state = loaded;
+            for (const [k, list] of Object.entries(byMonth())) synced[k] = JSON.stringify(list);
+            syncedMain = JSON.stringify(mainPart());
+          }
+        } else if (state.sample) {
+          state = emptyState();   // a brand-new account starts clean instead of uploading example numbers
+        }
+        cloud = {
+          saveMain: async (json) => { check(await sb.from("user_state").upsert({ user_id: u.id, state: JSON.parse(json), updated_at: new Date().toISOString() })); },
+          saveMonth: async (k, json) => { check(await sb.from("purchase_months").upsert({ user_id: u.id, month: k, items: JSON.parse(json), updated_at: new Date().toISOString() })); },
+          deleteMonth: async (k) => { check(await sb.from("purchase_months").delete().eq("user_id", u.id).eq("month", k)); }
+        };
+        commit();
+        if (!row) toast(state.debts.length ? "Your numbers are now saved to your account" : "Welcome! Add your first debt to get started.");
+      } catch (e) {
+        setSync("err", "Couldn't load your account. Check your connection");
+      }
+    }
+
+    sb.auth.onAuthStateChange((event, session) => {
+      const u = session && session.user ? session.user : null;
+      if (event === "PASSWORD_RECOVERY") { $("acct-reset").hidden = false; showTab("settings"); msg("Choose a new password."); }
+      if (u && (!user || user.id !== u.id)) { user = u; setTimeout(() => load(u), 0); }   // never await Supabase inside this callback
+      else if (!u && user) {
+        user = null; cloud = null; synced = {}; syncedMain = "";
+        clearTimeout(saveTimer);
+        state = emptyState();
+        try { localStorage.removeItem(LS_KEY); localStorage.removeItem(LS_KEY + ":before-sign-in"); } catch (e) {}
+        commit(); setSync("ok", "Signed out");
+      }
+      renderAccount();
+    });
+
+    $("acct-mode-in").addEventListener("click", () => { mode = "in"; msg(""); renderAccount(); });
+    $("acct-mode-up").addEventListener("click", () => { mode = "up"; msg(""); renderAccount(); });
+    $("btn-go-signin").addEventListener("click", () => { showTab("settings"); $("acct-email").focus(); });
+    $("acct-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = $("acct-email").value.trim(), password = $("acct-pass").value;
+      if (password.length < 8) { msg("Use a password with at least 8 characters."); return; }
+      $("acct-submit").disabled = true; msg(mode === "in" ? "Signing in…" : "Creating your account…");
+      try {
+        if (mode === "in") { check(await sb.auth.signInWithPassword({ email, password })); msg(""); }
+        else {
+          const data = check(await sb.auth.signUp({ email, password, options: { emailRedirectTo: here } }));
+          msg(data.session ? "" : "Almost done: open the email we just sent and tap the link to confirm, then sign in here.");
+        }
+        $("acct-pass").value = "";
+      } catch (err) {
+        msg(/fetch|network/i.test(err.message || "") ? "Couldn't reach the server. Check your internet connection and try again." : /invalid login/i.test(err.message || "") ? "That email and password don't match. Try again or reset your password." : /not confirmed/i.test(err.message || "") ? "Confirm your email first: tap the link in the email we sent." : (err.message || "Something went wrong. Try again."));
+      }
+      $("acct-submit").disabled = false;
+    });
+    $("acct-forgot").addEventListener("click", async () => {
+      const email = $("acct-email").value.trim();
+      if (!email) { msg("Type your email above first, then tap Forgot password."); $("acct-email").focus(); return; }
+      try { check(await sb.auth.resetPasswordForEmail(email, { redirectTo: here })); msg("If that email has an account, a reset link is on its way."); }
+      catch (err) { msg(err.message || "Couldn't send the reset email. Try again later."); }
+    });
+    $("acct-reset").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const password = $("acct-newpass").value;
+      if (password.length < 8) { msg("Use a password with at least 8 characters."); return; }
+      try { check(await sb.auth.updateUser({ password })); $("acct-reset").hidden = true; $("acct-newpass").value = ""; msg("Password updated."); }
+      catch (err) { msg(err.message || "Couldn't update the password. Try again."); }
+    });
+    $("acct-signout").addEventListener("click", async () => {
+      // Flush any pending save before leaving.
+      if (cloud) { clearTimeout(saveTimer); await pushCloud(); }
+      try { await sb.auth.signOut(); } catch (e) { toast("Couldn't sign out. Try again."); }
+    });
+    renderAccount();
+  }
+
   render();
   renderChat();
   updateAiStatus();
   save();
   connectViewer();
+  connectSupabase();
 })();
 </script>
 

@@ -18,7 +18,7 @@ A modern, no-install web app that helps you **pay off debt faster** and **track 
 
 - The app never asks for bank logins, card numbers or SSNs.
 - CSV files are read on your device. Nothing is uploaded.
-- Data lives in your browser (local file), or privately in your Claude account (claude.ai artifact). Use **Save backup file** to keep a copy.
+- Data lives in your browser (local file), in your Supabase account protected by row-level security (hosted website), or privately in your Claude account (claude.ai artifact). Use **Save backup file** to keep a copy.
 - Everything you import (CSV files, backups, saved data) is validated, and everything shown on screen is escaped to block script injection.
 - `index.html` ships with a strict Content Security Policy: only the app's own script can run, and the app can only talk to Google Fonts and the Gemini API.
 - Exported CSV files are protected against spreadsheet formula injection.
@@ -26,17 +26,22 @@ A modern, no-install web app that helps you **pay off debt faster** and **track 
 
 ## How to run
 
-1. Download or clone the repo:
-   ```bash
-   git clone https://github.com/Shubhamsaboo/awesome-llm-apps.git
-   cd awesome-llm-apps/advanced_ai_agents/single_agent_apps/ai_debt_payoff_coach
-   ```
-2. Double-click `index.html` (or open it in Chrome, Edge, Safari or Firefox). That's it!
+**Option 1: the hosted website (recommended).** The app is hosted with GitHub Pages and uses [Supabase](https://supabase.com) for sign-in and cloud storage. Open the site, go to the **Data** tab, create an account, and your numbers follow you to every device.
+
+**Option 2: on your computer.** Download this folder and double-click `index.html`. Your data stays in that browser.
+
+### Set up your own copy (hosting + Supabase)
+
+1. Create a Supabase project. Run the SQL in [`supabase/schema.sql`](supabase/schema.sql) in the SQL editor. It creates two tables with row-level security, so each person can only read and change their own rows.
+2. Put your project URL and **anon** (public) key in `supabase.config`, then run `./build.sh`.
+3. In GitHub: **Settings → Pages → Build and deployment → Deploy from a branch**, then choose your branch and `/ (root)`.
+4. In Supabase: **Authentication → URL Configuration**. Set **Site URL** to your Pages address for this folder and add the same address under **Redirect URLs**. This makes the confirmation and password-reset emails send people back to the app.
 
 ## Editing the app
 
-- `app.html` holds the page content (styles, layout and JavaScript).
-- After editing it, run `./build.sh` to regenerate `index.html`.
+- `app.html` holds the page content (styles, layout and JavaScript). It also runs as a claude.ai artifact.
+- After editing it, run `./build.sh` to regenerate `index.html`. That adds the security policy and the Supabase settings.
+- `vendor/` contains a pinned copy of supabase-js 2.45.4 (MIT license).
 
 ## Disclaimer
 
