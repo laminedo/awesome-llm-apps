@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-0SJZD8vlXB9xWi82Owdgdyn1pWaNlW0vZV//8s2SpbQ='; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data: blob:; connect-src https://srzcgfjhcgcqjakenqfj.supabase.co wss://srzcgfjhcgcqjakenqfj.supabase.co https://generativelanguage.googleapis.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' 'sha256-NyLTjSk/rARKI2bYTT/LbvDQrF2QVsyz4QYYbikjx4Q='; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src data: blob:; connect-src https://srzcgfjhcgcqjakenqfj.supabase.co wss://srzcgfjhcgcqjakenqfj.supabase.co https://generativelanguage.googleapis.com; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="supabase-url" content="https://srzcgfjhcgcqjakenqfj.supabase.co">
 <meta name="supabase-key" content="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNyemNnZmpoY2djcWpha2VucWZqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIwNjQ4NzYsImV4cCI6MjEwNzY0MDg3Nn0.UFiDC4BUjwbzk_gXm2MdHxhVA_d1bONVh6MmbLh36GU">
+<meta name="pdfjs-base" content="vendor/">
 <script src="vendor/supabase-js-2.45.4.js"></script>
 </head>
 <body>
@@ -324,7 +325,7 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
   <section class="panel" id="panel-purchases" role="tabpanel" aria-labelledby="tab-purchases" hidden>
     <div class="card">
       <div class="card-head"><h2 id="p-form-title">Log a purchase</h2>
-        <div><button class="btn small" id="btn-import-open" type="button">Import bank CSV</button></div>
+        <div><button class="btn small" id="btn-import-open" type="button">Import statement (CSV or PDF)</button></div>
       </div>
       <form class="inline" id="p-form" autocomplete="off">
         <input type="hidden" id="p-id">
@@ -346,10 +347,10 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
 
     <div class="card" id="import-card" hidden>
       <div class="card-head"><h2>Import purchases from your bank</h2><button class="btn small" id="btn-import-close" type="button">Close</button></div>
-      <p class="muted" style="margin-top:0">Download your card activity as a CSV file from your bank's website (look for "Download" or "Export" on the transactions page). Then choose it here. The file is read on your device and never uploaded.</p>
+      <p class="muted" style="margin-top:0">Choose a CSV file of your card activity (look for "Download" or "Export" on your bank's transactions page) or a PDF statement. The file is read on your device and never uploaded. CSV files are the most accurate. For PDFs, check the preview before importing.</p>
       <div class="drop" id="drop">
-        <p style="margin:0 0 8px">Drop a .csv file here, or</p>
-        <input type="file" id="csv-file" accept=".csv,text/csv" style="max-width:280px;margin:0 auto">
+        <p style="margin:0 0 8px">Drop a .csv or .pdf file here, or</p>
+        <input type="file" id="csv-file" accept=".csv,text/csv,.pdf,application/pdf" style="max-width:280px;margin:0 auto">
       </div>
       <details style="margin-top:10px"><summary class="muted" style="cursor:pointer">Or paste the CSV text</summary>
         <textarea id="csv-text" rows="4" style="margin-top:8px" placeholder="Date,Description,Amount&#10;10/02/2026,TRADER JOES,-54.20"></textarea>
@@ -1273,6 +1274,9 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
     if (text.length > 5e6) { toast("That file is too big (over 5 MB). Export a shorter date range."); return; }
     const rows = parseCSV(text);
     if (rows.length < 2) { toast("Couldn't find rows in that file. Is it a CSV export?"); return; }
+    loadRows(rows);
+  }
+  function loadRows(rows) {
     const hi = rows.slice(0, 20).findIndex((r) => r.some((c) => /date/i.test(c)));
     const width = Math.max(...rows.slice(0, 50).map((r) => r.length));
     const header = hi >= 0 ? rows[hi] : Array.from({ length: width }, (_, i) => "Column " + (i + 1));
@@ -1335,8 +1339,86 @@ input[type="range"] { padding: 0; accent-color: var(--accent); border: 0; backgr
   $("btn-import-close").addEventListener("click", () => ($("import-card").hidden = true));
   function readFile(file) {
     if (!file) return;
+    if (/\.pdf$/i.test(file.name) || file.type === "application/pdf") { readPdf(file); return; }
     if (file.size > 5e6) { toast("That file is too big (over 5 MB). Export a shorter date range."); return; }
     const r = new FileReader(); r.onload = () => loadCSV(String(r.result || "")); r.onerror = () => toast("Couldn't read that file"); r.readAsText(file);
+  }
+
+  /* ---------- PDF statements ---------- */
+  // pdf.js is loaded only when a PDF is chosen. The worker script runs on the page (no separate worker),
+  // and eval is turned off so a crafted PDF can't run code.
+  const PDF_BASE = (document.querySelector('meta[name="pdfjs-base"]') || {}).content || "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/";
+  const PDF_FILES = PDF_BASE === "vendor/" ? ["pdfjs-3.11.174.worker.min.js", "pdfjs-3.11.174.min.js"] : ["pdf.worker.min.js", "pdf.min.js"];
+  let pdfReady = null;
+  const loadScript = (src) => new Promise((ok, fail) => { const el = document.createElement("script"); el.src = src; el.onload = ok; el.onerror = () => fail(new Error("load")); document.head.appendChild(el); });
+  function loadPdfJs() {
+    if (!pdfReady) {
+      pdfReady = (async () => {
+        if (!window.pdfjsWorker) await loadScript(PDF_BASE + PDF_FILES[0]);
+        if (!window.pdfjsLib) await loadScript(PDF_BASE + PDF_FILES[1]);
+        if (!window.pdfjsLib || !window.pdfjsWorker) throw new Error("load");
+        return window.pdfjsLib;
+      })();
+      pdfReady.catch(() => { pdfReady = null; });
+    }
+    return pdfReady;
+  }
+  const MON = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  const RE_LINE_NUM = /^(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\s+(?:\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\s+)?(.+?)\s+(\(?-?\s?\$?\s?[\d,]+\.\d{2}\)?(?:\s?(?:-|CR))?)$/i;
+  const RE_LINE_MON = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:,?\s+(\d{4}))?\s+(?:(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\s+)?(.+?)\s+(\(?-?\s?\$?\s?[\d,]+\.\d{2}\)?(?:\s?(?:-|CR))?)$/i;
+  // Turns one statement line like "10/02 TRADER JOE'S #552 54.20" into a dated row. Dates without a year get the
+  // most recent matching year that isn't in the future.
+  function statementLine(line) {
+    let m = line.match(RE_LINE_NUM), mo, day, yr;
+    if (m) { mo = +m[1]; day = +m[2]; yr = m[3]; }
+    else if ((m = line.match(RE_LINE_MON))) { mo = MON[m[1].slice(0, 3).toLowerCase()]; day = +m[2]; yr = m[3]; }
+    else return null;
+    const desc = m[4], amt = m[5];
+    if (/^(previous|new) balance|^total|^payment due|minimum payment|^interest charge|^fees? charged/i.test(desc)) return null;
+    let y = yr ? (yr.length === 2 ? 2000 + +yr : +yr) : new Date().getFullYear();
+    if (!yr) { const d = new Date(y, mo - 1, day); if (d - new Date() > 7 * 864e5) y -= 1; }
+    const date = vDate(y + "-" + pad(mo) + "-" + pad(day));
+    if (!date) return null;
+    const credit = /CR$|-$|^\(|^-/.test(amt.replace(/[\s$]/g, ""));
+    return [date, vStr(desc, 120), (credit ? "-" : "") + amt.replace(/[^0-9.]/g, "")];
+  }
+  async function readPdf(file) {
+    if (file.size > 10e6) { toast("That PDF is too big (over 10 MB)."); return; }
+    toast("Reading your statement…");
+    let pdf;
+    try {
+      const lib = await loadPdfJs();
+      const data = new Uint8Array(await file.arrayBuffer());
+      pdf = await lib.getDocument({ data, isEvalSupported: false, disableFontFace: true, useSystemFonts: false, enableXfa: false, stopAtErrors: false }).promise;
+    } catch (e) {
+      toast(e && e.name === "PasswordException" ? "That PDF is password-protected. Download it again without a password, or use CSV." : e && e.message === "load" ? "Couldn't load the PDF reader. Check your connection and try again." : "Couldn't open that PDF. Try your bank's CSV download instead.");
+      return;
+    }
+    const rows = [["Date", "Description", "Amount"]];
+    let textFound = false;
+    try {
+      for (let n = 1; n <= Math.min(pdf.numPages, 60); n++) {
+        const page = await pdf.getPage(n);
+        const tc = await page.getTextContent();
+        const lines = new Map();   // group text pieces into lines by their vertical position
+        for (const it of tc.items) {
+          if (!it.str || !it.str.trim()) continue;
+          textFound = true;
+          const y = Math.round(it.transform[5] / 2.5);
+          if (!lines.has(y)) lines.set(y, []);
+          lines.get(y).push({ x: it.transform[4], s: it.str });
+        }
+        for (const y of Array.from(lines.keys()).sort((a, b) => b - a)) {
+          const line = lines.get(y).sort((a, b) => a.x - b.x).map((p) => p.s.trim()).join(" ").replace(/\s+/g, " ").trim().slice(0, 300);
+          const row = statementLine(line);
+          if (row) rows.push(row);
+        }
+      }
+    } finally { pdf.destroy(); }
+    if (!textFound) { toast("This PDF looks like a scanned image, so its text can't be read. Use your bank's CSV download instead."); return; }
+    if (rows.length < 2) { toast("Couldn't find purchase lines in that PDF. Try your bank's CSV download instead."); return; }
+    loadRows(rows);
+    toast("Found " + (rows.length - 1) + " lines. Check the preview, then tap Import.");
   }
   $("csv-file").addEventListener("change", (e) => readFile(e.target.files[0]));
   $("csv-parse").addEventListener("click", () => loadCSV($("csv-text").value));

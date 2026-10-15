@@ -5,7 +5,7 @@ A modern, no-install web app that helps you **pay off debt faster** and **track 
 ## Features
 
 - **Track every purchase**: log purchases by card and category (the category is guessed from the store name), edit them, record refunds, and search or filter by month, card or category.
-- **Import from your bank**: drop in the CSV file your bank lets you download. The app finds the date, description and amount columns, skips card payments, auto-categorizes each row and skips duplicates. You can export back to CSV at any time.
+- **Import from your bank**: drop in the CSV file your bank lets you download, or a **PDF statement** (read on your device with Mozilla's pdf.js; scanned or password-protected PDFs aren't supported). The app finds the date, description and amount columns, skips card payments, auto-categorizes each row and skips duplicates. You can export back to CSV at any time.
 - **Repeat charges**: subscriptions and bills that show up every month are found automatically, with your monthly and yearly total.
 - **Payoff planner**: compare **Avalanche** (highest rate first), **Snowball** (smallest balance first) and paying only minimums for credit cards, loans and IRS balances. An "extra per month" slider shows your new debt-free date and the interest you save.
 - **Payments and due dates**: log payments (your balance updates automatically), see bills due in the next 31 days, and track how much you've paid down on each debt.
@@ -22,6 +22,7 @@ A modern, no-install web app that helps you **pay off debt faster** and **track 
 - Everything you import (CSV files, backups, saved data) is validated, and everything shown on screen is escaped to block script injection.
 - `index.html` ships with a strict Content Security Policy: only the app's own script can run, and the app can only talk to Google Fonts and the Gemini API.
 - Exported CSV files are protected against spreadsheet formula injection.
+- PDFs are opened with pdf.js with JavaScript evaluation turned off, so a crafted PDF can't run code.
 - Your Gemini key is kept only in your browser and sent only to Google, in a request header.
 
 ## How to run
@@ -41,7 +42,7 @@ A modern, no-install web app that helps you **pay off debt faster** and **track 
 
 - `app.html` holds the page content (styles, layout and JavaScript). It also runs as a claude.ai artifact.
 - After editing it, run `./build.sh` to regenerate `index.html`. That adds the security policy and the Supabase settings.
-- `vendor/` contains a pinned copy of supabase-js 2.45.4 (MIT license).
+- `vendor/` contains pinned copies of supabase-js 2.45.4 (MIT license) and pdf.js 3.11.174 (Apache 2.0 license).
 
 ## Disclaimer
 

@@ -26,6 +26,7 @@ CSP="default-src 'none'; script-src 'self' 'sha256-${HASH}'; style-src 'unsafe-i
   printf '<meta http-equiv="Content-Security-Policy" content="%s">\n' "$CSP"
   printf '<meta name="referrer" content="no-referrer">\n'
   printf '<meta name="supabase-url" content="%s">\n<meta name="supabase-key" content="%s">\n' "$SUPABASE_URL" "$SUPABASE_KEY"
+  printf '<meta name="pdfjs-base" content="vendor/">\n'
   printf '<script src="%s"></script>\n' "$SB_JS"
   printf '</head>\n<body>\n'
   cat app.html
